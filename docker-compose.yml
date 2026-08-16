@@ -1,0 +1,11 @@
+services:
+  cloud-services:
+    build:
+      context: ./TtkvCloud/CloudServices
+      dockerfile: Dockerfile
+    container_name: ttkv-cloud-services
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_URLS: http://+:8080

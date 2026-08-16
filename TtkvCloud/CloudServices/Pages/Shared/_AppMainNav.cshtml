@@ -1,0 +1,17 @@
+@{
+    var raw = ViewContext.HttpContext.Request.Path.Value ?? "/";
+    var path = raw.TrimEnd('/');
+    if (path.Length == 0)
+    {
+        path = "/";
+    }
+
+    var isHome = string.Equals(path, "/", StringComparison.Ordinal);
+}
+<nav class="app-main-nav" aria-label="Hauptnavigation">
+    <div class="app-nav-links">
+        <a href="@Url.Page("/Index")" class="app-nav-link" aria-label="Startseite" aria-current="@(isHome ? "page" : null)">
+            <partial name="_HomeNavIcon" />
+        </a>
+    </div>
+</nav>

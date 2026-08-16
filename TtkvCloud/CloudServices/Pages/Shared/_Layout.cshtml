@@ -1,0 +1,150 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@(ViewData["Title"] ?? "TTKV Cloud")</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: #fff;
+            color: #1a1a1a;
+            font-family: system-ui, sans-serif;
+        }
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 100%;
+        }
+        .app-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            width: 100%;
+            flex: 0 0 auto;
+            padding: 0.35rem 0.5rem;
+            box-sizing: border-box;
+        }
+        .app-main-nav {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.35rem;
+            width: 100%;
+            min-width: 0;
+        }
+        .app-nav-links {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 0.15rem;
+            flex: 1;
+            min-width: 0;
+            overflow-x: auto;
+        }
+        .app-nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            color: #1a73e8;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .app-nav-link:hover {
+            background: #e8f0fe;
+            color: #174ea6;
+        }
+        .app-nav-link[aria-current="page"] {
+            background: #e8f0fe;
+            border-color: #a8c7fa;
+            color: #174ea6;
+        }
+        .app-nav-link svg {
+            display: block;
+        }
+        .app-page {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .app-home {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
+        }
+        .app-iframe-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            align-items: center;
+            padding: 0 0.5rem 0.35rem;
+            box-sizing: border-box;
+        }
+        .app-iframe-actions:empty {
+            display: none;
+        }
+        .app-action-button {
+            appearance: none;
+            font: inherit;
+            font-size: 0.88rem;
+            line-height: 1.2;
+            padding: 0.35rem 0.7rem;
+            border-radius: 8px;
+            border: 1px solid #a8c7fa;
+            background: #fff;
+            color: #174ea6;
+            cursor: pointer;
+        }
+        .app-action-button:hover:not(:disabled) {
+            background: #e8f0fe;
+        }
+        .app-action-button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+        }
+        .app-action-status {
+            font-size: 0.82rem;
+            color: #555;
+        }
+        .app-action-status[data-kind="error"] {
+            color: #b3261e;
+        }
+        .app-iframe {
+            flex: 1;
+            width: 100%;
+            border: 1px solid #c5c5c5;
+            min-height: 0;
+            background: #fff;
+            box-sizing: border-box;
+        }
+        .app-error {
+            padding: 1rem 1.25rem;
+            line-height: 1.5;
+        }
+        .app-error h1 {
+            font-size: 1.25rem;
+            margin: 0 0 0.5rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <div class="app-toolbar">
+            <partial name="_AppMainNav" />
+        </div>
+        <div class="app-page">
+            @RenderBody()
+        </div>
+    </div>
+</body>
+</html>

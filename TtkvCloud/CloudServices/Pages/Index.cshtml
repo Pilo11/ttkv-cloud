@@ -1,0 +1,260 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "TTKV Cloud";
+}
+
+<div class="app-home">
+    <div class="app-iframe-actions">
+        <button type="button" class="app-action-button" id="insertNeueBegegnung">
+            Begegnungen importieren
+        </button>
+        <input type="file" id="begegnungenCsvInput" accept=".csv,text/csv" hidden />
+        <span class="app-action-status" id="iframeActionStatus" aria-live="polite"></span>
+    </div>
+    <iframe class="app-iframe" id="clickTtFrame" src="/click-tt/admin" title="click-TT Admin"></iframe>
+</div>
+<script>
+    (function () {
+        const linkLabel = "neue Begegnung einfügen";
+        const button = document.getElementById("insertNeueBegegnung");
+        const fileInput = document.getElementById("begegnungenCsvInput");
+        const status = document.getElementById("iframeActionStatus");
+        const iframe = document.getElementById("clickTtFrame");
+        if (!button || !fileInput || !status || !iframe) {
+            return;
+        }
+
+        const setStatus = (text, kind) => {
+            status.textContent = text;
+            if (kind) {
+                status.dataset.kind = kind;
+            } else {
+                delete status.dataset.kind;
+            }
+        };
+
+        const visibleText = (element) =>
+            (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+
+        const findLinkByLabel = (doc, label) => {
+            const wanted = label.replace(/\s+/g, " ").trim().toLowerCase();
+            return Array.from(doc.querySelectorAll("a")).find((anchor) => {
+                const text = visibleText(anchor).toLowerCase();
+                return text === wanted || text.includes(wanted);
+            }) ?? null;
+        };
+
+        const meetingRows = (doc) =>
+            Array.from(doc.querySelectorAll('input[placeholder="TT.MM.JJJJ"]'))
+                .map((input) => input.closest("tr"))
+                .filter(Boolean);
+
+        const emptyMeetingRows = (doc) =>
+            meetingRows(doc).filter((row) => {
+                const date = row.querySelector('input[placeholder="TT.MM.JJJJ"]');
+                return date && !date.value.trim();
+            });
+
+        const waitForNewEmptyRow = (doc, previousCount, timeoutMs) => new Promise((resolve, reject) => {
+            const root = doc.getElementById("meetingsUpdateContainer") || doc.body;
+            const timer = window.setTimeout(() => {
+                observer.disconnect();
+                reject(new Error("timeout"));
+            }, timeoutMs);
+
+            const check = () => {
+                const empty = emptyMeetingRows(doc);
+                if (empty.length > previousCount) {
+                    window.clearTimeout(timer);
+                    observer.disconnect();
+                    resolve(empty[empty.length - 1]);
+                }
+            };
+
+            const observer = new MutationObserver(check);
+            observer.observe(root, { childList: true, subtree: true });
+            check();
+        });
+
+        const dispatch = (win, element, type) => {
+            element.dispatchEvent(new win.Event(type, { bubbles: true }));
+        };
+
+        const setInputValue = (win, element, value) => {
+            element.focus();
+            element.value = value;
+            dispatch(win, element, "input");
+            dispatch(win, element, "change");
+            element.blur();
+        };
+
+        const setSelectByLabel = (win, select, label) => {
+            const wanted = label.replace(/\s+/g, " ").trim().toLowerCase();
+            const match = Array.from(select.options).find((option) =>
+                option.text.replace(/\s+/g, " ").trim().toLowerCase() === wanted)
+                ?? Array.from(select.options).find((option) =>
+                    option.text.replace(/\s+/g, " ").trim().toLowerCase().includes(wanted));
+            if (!match) {
+                return false;
+            }
+
+            select.value = match.value;
+            dispatch(win, select, "change");
+            return true;
+        };
+
+        const fillMeetingRow = (win, row, meeting) => {
+            const dateInput = row.querySelector('input[placeholder="TT.MM.JJJJ"]');
+            const timeInput = row.querySelector('input[placeholder="--:--"]');
+            const groupInput = row.querySelector('input[maxlength="1"]');
+            const selects = row.querySelectorAll("select");
+
+            if (dateInput && meeting.date) {
+                setInputValue(win, dateInput, meeting.date);
+            }
+            if (timeInput && meeting.time) {
+                setInputValue(win, timeInput, meeting.time);
+            }
+            if (groupInput && meeting.group) {
+                setInputValue(win, groupInput, meeting.group);
+            }
+            if (selects[0] && meeting.home && !setSelectByLabel(win, selects[0], meeting.home)) {
+                throw new Error("team:" + meeting.home);
+            }
+            if (selects[1] && meeting.away && !setSelectByLabel(win, selects[1], meeting.away)) {
+                throw new Error("team:" + meeting.away);
+            }
+        };
+
+        const parseCsvLine = (line, delimiter) => {
+            const result = [];
+            let current = "";
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === "\"") {
+                    if (inQuotes && line[i + 1] === "\"") {
+                        current += "\"";
+                        i += 1;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (ch === delimiter && !inQuotes) {
+                    result.push(current.trim());
+                    current = "";
+                } else {
+                    current += ch;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        };
+
+        const headerIndex = (header, names) => {
+            for (const name of names) {
+                const index = header.indexOf(name);
+                if (index >= 0) {
+                    return index;
+                }
+            }
+            return -1;
+        };
+
+        const parseCsv = (text) => {
+            const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+            const lines = normalized.split("\n").filter((line) => line.trim().length > 0);
+            if (lines.length < 2) {
+                throw new Error("emptycsv");
+            }
+
+            const delimiter = (lines[0].split(";").length >= lines[0].split(",").length) ? ";" : ",";
+            const header = parseCsvLine(lines[0], delimiter).map((cell) => cell.toLowerCase());
+            const dateIndex = headerIndex(header, ["datum", "date"]);
+            const timeIndex = headerIndex(header, ["uhrzeit", "zeit", "time"]);
+            const groupIndex = headerIndex(header, ["nr", "nummer", "gruppe", "group"]);
+            const homeIndex = headerIndex(header, ["heim", "home", "heimverein"]);
+            const awayIndex = headerIndex(header, ["gast", "away", "gastverein"]);
+            if (dateIndex < 0 || homeIndex < 0 || awayIndex < 0) {
+                throw new Error("csvheader");
+            }
+
+            return lines.slice(1).map((line) => {
+                const cells = parseCsvLine(line, delimiter);
+                return {
+                    date: cells[dateIndex] || "",
+                    time: timeIndex >= 0 ? (cells[timeIndex] || "") : "",
+                    group: groupIndex >= 0 ? (cells[groupIndex] || "").slice(0, 1) : "",
+                    home: cells[homeIndex] || "",
+                    away: cells[awayIndex] || ""
+                };
+            }).filter((meeting) => meeting.date || meeting.home || meeting.away);
+        };
+
+        const insertMeetings = async (meetings) => {
+            const doc = iframe.contentDocument;
+            const win = iframe.contentWindow;
+            if (!doc || !win) {
+                throw new Error("iframe");
+            }
+
+            for (let i = 0; i < meetings.length; i++) {
+                setStatus("Füge Begegnung " + (i + 1) + " von " + meetings.length + " ein…");
+                const link = findLinkByLabel(doc, linkLabel);
+                if (!link) {
+                    throw new Error("notfound");
+                }
+
+                const previousEmpty = emptyMeetingRows(doc).length;
+                const rowPromise = waitForNewEmptyRow(doc, previousEmpty, 15000);
+                link.click();
+                const row = await rowPromise;
+                fillMeetingRow(win, row, meetings[i]);
+            }
+        };
+
+        button.addEventListener("click", () => {
+            fileInput.value = "";
+            fileInput.click();
+        });
+
+        fileInput.addEventListener("change", async () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) {
+                return;
+            }
+
+            button.disabled = true;
+            setStatus("CSV wird gelesen…");
+
+            try {
+                const text = await file.text();
+                const meetings = parseCsv(text);
+                if (meetings.length === 0) {
+                    throw new Error("emptycsv");
+                }
+
+                await insertMeetings(meetings);
+                setStatus(meetings.length + " Begegnung(en) aus CSV eingefügt.");
+            } catch (error) {
+                const message = error && error.message;
+                if (message === "notfound") {
+                    setStatus("Link „neue Begegnung einfügen“ nicht gefunden. Bitte die Begegnungsseite öffnen.", "error");
+                } else if (message === "timeout") {
+                    setStatus("Neue Zeile ist nicht erschienen.", "error");
+                } else if (message === "emptycsv") {
+                    setStatus("CSV enthält keine Begegnungen.", "error");
+                } else if (message === "csvheader") {
+                    setStatus("CSV braucht die Spalten Datum, Heim und Gast.", "error");
+                } else if (message && message.startsWith("team:")) {
+                    setStatus("Mannschaft nicht in der Auswahlliste: " + message.slice(5), "error");
+                } else {
+                    setStatus("Einfügen aus CSV fehlgeschlagen.", "error");
+                }
+            } finally {
+                button.disabled = false;
+                fileInput.value = "";
+            }
+        });
+    })();
+</script>

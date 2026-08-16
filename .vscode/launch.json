@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CloudServices",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/TtkvCloud/CloudServices/bin/Debug/net10.0/CloudServices.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/TtkvCloud/CloudServices",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "serverReadyAction": {
+                "action": "openExternally",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+            },
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "http://localhost:8080"
+            }
+        }
+    ]
+}

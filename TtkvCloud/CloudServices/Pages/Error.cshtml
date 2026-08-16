@@ -1,0 +1,15 @@
+﻿@page
+@model ErrorModel
+@{
+    ViewData["Title"] = "Fehler";
+}
+
+<div class="app-error">
+    <h1>Ein Fehler ist aufgetreten.</h1>
+    @if (Model.ShowRequestId)
+    {
+        <p>
+            <strong>Request ID:</strong> <code>@Model.RequestId</code>
+        </p>
+    }
+</div>
