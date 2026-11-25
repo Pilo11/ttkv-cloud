@@ -1,4 +1,5 @@
 using CloudServices.Proxy;
+using CloudServices.Services.Appointment;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,11 +11,19 @@ if (!string.IsNullOrWhiteSpace(aspNetCoreUrls))
 }
 
 builder.Services.AddRazorPages();
+builder.Services.Configure<TermineOptions>(builder.Configuration.GetSection("Termine"));
+builder.Services.AddSingleton<TermineStore>();
+builder.Services.AddSingleton<StaffelleitungAccess>();
+builder.Services.Configure<RouteOptions>(options =>
+    options.ConstraintMap[StaffelleitungKeyConstraint.Name] = typeof(StaffelleitungKeyConstraint));
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
     .AddTransforms(ClickTtProxyTransforms.Register);
 
 var app = builder.Build();
+
+// Resolve once at startup so the secret Staffelleitung path is created and logged.
+app.Services.GetRequiredService<StaffelleitungAccess>();
 
 if (!app.Environment.IsDevelopment())
 {

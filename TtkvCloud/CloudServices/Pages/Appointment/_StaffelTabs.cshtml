@@ -1,0 +1,13 @@
+@model StaffelTabs
+<nav class="app-tabs" aria-label="Spielplan">
+    <a class="app-tab" href="@Url.Page("/Appointment/TerminGenerator", new { key = Model.Key, id = Model.Id })"
+       aria-current="@(Model.Active == StaffelTabs.Settings ? "page" : null)">
+        <partial name="_Icon" model="@("edit")" />
+        Einstellungen
+    </a>
+    <a class="app-tab" href="@Url.Page("/Appointment/TermineAdmin", new { key = Model.Key, id = Model.Id })"
+       aria-current="@(Model.Active == StaffelTabs.Termine ? "page" : null)">
+        <partial name="_Icon" model="@("grid")" />
+        Termine
+    </a>
+</nav>

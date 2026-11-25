@@ -1,0 +1,59 @@
+@page "/staffelleitung/{key:staffelkey}/{id}/termine"
+@model TermineAdminModel
+@{
+    ViewData["Staffelleitung"] = true;
+    ViewData["Title"] = "Termine – " + Model.Tenant!.Name;
+    var tenant = Model.Tenant!;
+    var summary = Model.Summary!;
+    var listUrl = Url.Page("/Appointment/TerminGenerator", new { key = Model.Key, id = (string?)null });
+}
+
+<div class="app-termine-shell app-fill">
+    <div class="app-termine-head">
+        <div class="app-termine-title">
+            <div>
+                <nav class="app-breadcrumb" aria-label="Pfad">
+                    <span class="app-eyebrow"><partial name="_Icon" model="@("lock")" /> Staffelleitung</span>
+                    <span class="app-breadcrumb-sep">/</span>
+                    <a href="@listUrl">Spielpläne</a>
+                </nav>
+                <h1>@tenant.Name</h1>
+            </div>
+            <div class="app-page-actions">
+                <a class="app-btn" href="@Url.Page("/Appointment/TermineAdmin", "Export", new { key = Model.Key, id = Model.Id })"
+                   title="Gebuchte Termine als CSV für den Import auf der myTT-Seite">
+                    <partial name="_Icon" model="@("download")" /> CSV für myTT
+                </a>
+                <a class="app-btn" href="@Url.Page("/Appointment/Termine", new { id = Model.Id })" target="_blank" rel="noopener noreferrer">
+                    Öffentliche Ansicht <partial name="_Icon" model="@("external")" />
+                </a>
+            </div>
+        </div>
+        <div class="app-termine-head-row">
+            <partial name="_StaffelTabs" model="new StaffelTabs(Model.Key, Model.Id, StaffelTabs.Termine)" />
+            <div class="app-termine-progress">
+                <div class="app-progress" role="presentation"><span style="width: @(summary.ScheduledPercent)%"></span></div>
+                <span class="app-stats">
+                    <span><strong>@summary.ScheduledCount</strong> von @summary.MatchCount terminiert</span>
+                    <span><strong>@summary.OpenOfferCount</strong> freie Vorschläge</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-termine-body">
+        <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+        <partial name="_TermineMatches" model="Model.Matrix" />
+        <form method="post" class="app-termine-form">
+            <div class="app-matrix-toolbar">
+                <span class="app-hint">Als Staffelleitung können Sie gebuchte Termine <b>freigeben</b> (der Vorschlag bleibt bestehen) oder Termine ganz <b>löschen</b>.</span>
+                <div class="app-legend" aria-label="Legende">
+                    <span><i class="lg-offer"></i>Terminvorschlag frei</span>
+                    <span><i class="lg-booked"></i>Gebucht</span>
+                    <span><i class="lg-blocked"></i>Gesperrt</span>
+                </div>
+            </div>
+            <partial name="_TermineMatrix" model="Model.Matrix" />
+        </form>
+    </div>
+</div>

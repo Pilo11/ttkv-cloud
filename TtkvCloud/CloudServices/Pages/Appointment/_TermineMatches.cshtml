@@ -1,0 +1,60 @@
+@model TermineMatrixView
+@{
+    var tenant = Model.Tenant;
+    var scheduled = tenant.Matches.Count(match => TermineRules.IsMatchScheduled(tenant, match.Id));
+    var open = tenant.Matches.Count - scheduled;
+    var selected = Model.SelectedClubId;
+    bool IsMine(TermineMatch match) => selected is not null
+        && (string.Equals(match.HomeClubId, selected, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(match.GuestClubId, selected, StringComparison.OrdinalIgnoreCase));
+    var ordered = selected is null
+        ? tenant.Matches
+        : tenant.Matches.OrderByDescending(IsMine).ToList();
+}
+@if (tenant.Matches.Count > 0)
+{
+    <details class="app-matches">
+        <summary>
+            Begegnungen
+            <span class="app-badge">@tenant.Matches.Count</span>
+            <span class="app-badge app-badge-success">@scheduled terminiert</span>
+            @if (open > 0)
+            {
+                <span class="app-badge app-badge-warning">@open offen</span>
+            }
+        </summary>
+        <div class="app-table-wrap">
+            <table class="app-table">
+                <thead>
+                    <tr>
+                        <th class="app-num">Nr</th>
+                        <th>Heim</th>
+                        <th>Gast</th>
+                        <th>Termin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var match in ordered)
+                    {
+                        var booked = TermineRules.FindSlotForMatch(tenant, match.Id);
+                        <tr data-mine="@(IsMine(match) ? "true" : null)">
+                            <td class="app-num">@(string.IsNullOrEmpty(match.Location) ? "—" : match.Location)</td>
+                            <td>@Model.ClubName(match.HomeClubId)</td>
+                            <td>@Model.ClubName(match.GuestClubId)</td>
+                            <td>
+                                @if (booked is not null)
+                                {
+                                    <span class="app-badge app-badge-success">@TermineDates.FormatWithWeekday(booked.Date), @booked.Time Uhr</span>
+                                }
+                                else
+                                {
+                                    <span class="app-badge">offen</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </details>
+}

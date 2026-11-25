@@ -1,3 +1,4 @@
 bin/
 obj/
+Data/local-cache/
 **/.DS_Store

@@ -1,0 +1,27 @@
+﻿@page "/"
+@model IndexModel
+@{
+    ViewData["Title"] = "TTKV Cloud";
+}
+
+<div class="app-container app-container-narrow">
+    <section class="app-hero">
+        <h1>TTKV Cloud</h1>
+        <p>Werkzeuge für den Spielbetrieb: Termine der Staffel abstimmen und Begegnungen nach click-TT übertragen.</p>
+    </section>
+
+    <div class="app-tiles">
+        <a class="app-tile" href="@Url.Page("/Appointment/Termine")">
+            <span class="app-tile-icon"><partial name="_TermineNavIcon" /></span>
+            <h2>Terminplanung</h2>
+            <p>Für Mannschaftsführer: Heimtermine anbieten und freie Terminvorschläge anderer Mannschaften als Gast buchen.</p>
+            <span class="app-tile-link">Zur Terminplanung →</span>
+        </a>
+        <a class="app-tile" href="@Url.Page("/MyTt/Index")">
+            <span class="app-tile-icon"><partial name="_MyTtNavIcon" /></span>
+            <h2>myTT-Verwaltung</h2>
+            <p>click-TT Admin im eingebetteten Fenster. Begegnungen lassen sich dort aus einer CSV-Datei einfügen.</p>
+            <span class="app-tile-link">Zur myTT-Verwaltung →</span>
+        </a>
+    </div>
+</div>

@@ -1,0 +1,405 @@
+@page "/staffelleitung/{key:staffelkey}/{id?}"
+@model TerminGeneratorModel
+@{
+    ViewData["Staffelleitung"] = true;
+    ViewData["Title"] = Model.IsList ? "Staffelleitung" : Model.IsCreate ? "Neuer Spielplan" : Model.SavedName;
+    var listUrl = Url.Page("/Appointment/TerminGenerator", new { key = Model.Key, id = (string?)null });
+    var newUrl = Url.Page("/Appointment/TerminGenerator", new { key = Model.Key, id = TerminGeneratorModel.NewId });
+}
+
+<div class="app-container">
+    @if (Model.IsList)
+    {
+        <header class="app-page-header">
+            <div class="app-page-header-text">
+                <span class="app-eyebrow"><partial name="_Icon" model="@("lock")" /> Staffelleitung</span>
+                <h1>Spielpläne</h1>
+                <p class="app-lead">Legen Sie für jede Staffel einen Spielplan an: Zeitraum der Halbserie, gesperrte Tage und die Begegnungen. Die Mannschaftsführer tragen ihre Termine dann über den öffentlichen Link ein.</p>
+            </div>
+            <div class="app-page-actions">
+                <a class="app-btn app-btn-primary" href="@newUrl"><partial name="_Icon" model="@("plus")" /> Neuer Spielplan</a>
+            </div>
+        </header>
+
+        <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+
+        @if (Model.Plans.Count == 0)
+        {
+            <div class="app-empty">
+                <span class="app-empty-icon"><partial name="_Icon" model="@("grid")" /></span>
+                <h2>Noch keine Spielpläne</h2>
+                <p>Ein Spielplan umfasst eine Halbserie (Hin- oder Rückrunde) einer Staffel mit 6 bis 12 Mannschaften.</p>
+                <a class="app-btn app-btn-primary" href="@newUrl"><partial name="_Icon" model="@("plus")" /> Ersten Spielplan anlegen</a>
+            </div>
+        }
+        else
+        {
+            <ul class="app-plan-list">
+                @foreach (var plan in Model.Plans)
+                {
+                    var editUrl = Url.Page("/Appointment/TerminGenerator", new { key = Model.Key, id = plan.Id });
+                    var termineUrl = Url.Page("/Appointment/TermineAdmin", new { key = Model.Key, id = plan.Id });
+                    <li class="app-plan">
+                        <div class="app-plan-main">
+                            <a class="app-plan-name" href="@editUrl">@plan.Name</a>
+                            <div class="app-stats">
+                                @if (plan.FirstDate is not null)
+                                {
+                                    <span>@TermineDates.FormatDisplay(plan.FirstDate) – @TermineDates.FormatDisplay(plan.LastDate!)</span>
+                                }
+                                <span><strong>@plan.ClubCount</strong> Mannschaften</span>
+                                <span><strong>@plan.DateCount</strong> Spieltage</span>
+                                @if (plan.BlockedCount > 0)
+                                {
+                                    <span><strong>@plan.BlockedCount</strong> gesperrt</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="app-plan-progress">
+                            <span><strong>@plan.ScheduledCount</strong> von @plan.MatchCount Begegnungen terminiert</span>
+                            <div class="app-progress" role="presentation"><span style="width: @(plan.ScheduledPercent)%"></span></div>
+                        </div>
+                        <div class="app-plan-actions">
+                            <a class="app-btn app-btn-sm" href="@termineUrl"><partial name="_Icon" model="@("grid")" /> Termine</a>
+                            <a class="app-btn app-btn-sm" href="@editUrl"><partial name="_Icon" model="@("edit")" /> Bearbeiten</a>
+                            <button type="button" class="app-btn app-btn-ghost app-btn-sm app-btn-icon" data-copy="@Model.PublicUrl(plan.Id)"
+                                    title="Öffentlichen Link kopieren" aria-label="Öffentlichen Link von @plan.Name kopieren">
+                                <partial name="_Icon" model="@("copy")" />
+                            </button>
+                            <form method="post" asp-page-handler="Delete" asp-route-key="@Model.Key" asp-route-id="@plan.Id" class="app-inline-form"
+                                  data-confirm="Spielplan „@plan.Name“ wirklich löschen? Alle eingetragenen Termine gehen verloren."
+                                  onsubmit="return confirm(this.dataset.confirm);">
+                                <button type="submit" class="app-btn app-btn-danger-ghost app-btn-sm app-btn-icon" title="Spielplan löschen" aria-label="Spielplan @plan.Name löschen">
+                                    <partial name="_Icon" model="@("trash")" />
+                                </button>
+                            </form>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    }
+    else
+    {
+        var calendar = Model.Calendar;
+        <header class="app-page-header">
+            <div class="app-page-header-text">
+                <nav class="app-breadcrumb" aria-label="Pfad">
+                    <a href="@listUrl">Spielpläne</a>
+                    <span class="app-breadcrumb-sep">/</span>
+                    <span>@(Model.IsCreate ? "Neu" : Model.SavedName)</span>
+                </nav>
+                <h1>@(Model.IsCreate ? "Neuer Spielplan" : Model.SavedName)</h1>
+            </div>
+            @if (Model.IsEdit)
+            {
+                <div class="app-page-actions">
+                    <a class="app-btn" href="@Url.Page("/Appointment/Termine", new { id = Model.Id })" target="_blank" rel="noopener noreferrer">
+                        Öffentliche Ansicht <partial name="_Icon" model="@("external")" />
+                    </a>
+                </div>
+            }
+        </header>
+
+        @if (Model.IsEdit)
+        {
+            <partial name="_StaffelTabs" model="new StaffelTabs(Model.Key, Model.Id!, StaffelTabs.Settings)" />
+        }
+
+        <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+
+        @if (Model.IsEdit)
+        {
+            var publicUrl = Model.PublicUrl(Model.Id!);
+            <section class="app-card app-share">
+                <div class="app-card-body">
+                    <div class="app-share-text">
+                        <h2>Link für die Mannschaftsführer</h2>
+                        <p>Über diesen Link bieten die Mannschaften Heimtermine an und buchen Auswärtstermine.</p>
+                    </div>
+                    <div class="app-share-link">
+                        <input class="app-input" type="text" value="@publicUrl" readonly aria-label="Öffentlicher Link" onfocus="this.select()" />
+                        <button type="button" class="app-btn app-btn-soft" data-copy="@publicUrl">
+                            <partial name="_Icon" model="@("copy")" /> <span data-copy-label>Kopieren</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        }
+
+        <form method="post" enctype="multipart/form-data" class="app-editor">
+            <section class="app-card">
+                <div class="app-card-header">
+                    <span class="app-step">1</span>
+                    <div class="app-card-header-text">
+                        <h2>Staffel</h2>
+                        <p>Unter diesem Namen finden die Mannschaftsführer den Spielplan.</p>
+                    </div>
+                </div>
+                <div class="app-card-body">
+                    <div class="app-field">
+                        <label for="Name">Name des Spielplans</label>
+                        <input id="Name" asp-for="Name" type="text" class="app-input app-input-lg" autocomplete="off"
+                               placeholder="z. B. Kreisliga Herren – Rückrunde 2026/27" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="app-card">
+                <div class="app-card-header">
+                    <span class="app-step">2</span>
+                    <div class="app-card-header-text">
+                        <h2>Zeitraum und gesperrte Tage</h2>
+                        <p>Der feste Zeitraum der Halbserie. Tage, an denen nicht gespielt werden darf (Ferien, Feiertage, Hallensperrung), klicken Sie im Kalender an.</p>
+                    </div>
+                </div>
+                <div class="app-card-body">
+                    <div class="app-form-row">
+                        <div class="app-field">
+                            <label for="DateFrom">Erster Spieltag</label>
+                            <input id="DateFrom" asp-for="DateFrom" type="date" />
+                        </div>
+                        <div class="app-field">
+                            <label for="DateTo">Letzter Spieltag</label>
+                            <input id="DateTo" asp-for="DateTo" type="date" />
+                        </div>
+                        <button type="submit" class="app-btn" asp-page-handler="ApplyRange">Zeitraum übernehmen</button>
+                    </div>
+
+                    @if (calendar.Count == 0)
+                    {
+                        <div class="app-empty-inline app-cal-empty">
+                            Zeitraum wählen und „Zeitraum übernehmen“ klicken – dann erscheint hier der Kalender zum Sperren einzelner Tage.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="app-cal" data-cal>
+                            <div class="app-cal-toolbar">
+                                <div class="app-cal-count">
+                                    <strong data-cal-free>–</strong> Spieltage frei ·
+                                    <strong data-cal-blocked>–</strong> gesperrt
+                                </div>
+                                <div class="app-cal-quick">
+                                    <span class="app-label">Wochentag sperren:</span>
+                                    @for (var wd = 0; wd < 7; wd++)
+                                    {
+                                        <button type="button" class="app-chip" data-weekday="@wd" aria-pressed="false">@TermineCalendar.WeekdayShortNames[wd]</button>
+                                    }
+                                    <button type="button" class="app-btn app-btn-ghost app-btn-xs" data-cal-clear>Alle freigeben</button>
+                                </div>
+                            </div>
+                            <div class="app-cal-months">
+                                @foreach (var month in calendar)
+                                {
+                                    <div class="app-cal-month">
+                                        <h3>@month.Title</h3>
+                                        <div class="app-cal-grid">
+                                            @foreach (var name in TermineCalendar.WeekdayShortNames)
+                                            {
+                                                <span class="app-cal-wd">@name</span>
+                                            }
+                                            @for (var blank = 0; blank < month.LeadingBlanks; blank++)
+                                            {
+                                                <span></span>
+                                            }
+                                            @foreach (var day in month.Days)
+                                            {
+                                                if (!day.InRange)
+                                                {
+                                                    <span class="app-cal-out" title="außerhalb des Zeitraums">@day.Day</span>
+                                                    continue;
+                                                }
+                                                <label class="app-cal-day" data-weekend="@(day.IsWeekend ? "true" : null)" data-termine="@(day.HasTermine ? "true" : null)"
+                                                       title="@(day.Label + (day.HasTermine ? " – es gibt bereits Termine" : ""))">
+                                                    @if (day.IsBlocked)
+                                                    {
+                                                        <input type="checkbox" name="BlockedDates" value="@day.Iso" data-wd="@day.WeekdayIndex" checked aria-label="@day.Label sperren" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="checkbox" name="BlockedDates" value="@day.Iso" data-wd="@day.WeekdayIndex" aria-label="@day.Label sperren" />
+                                                    }
+                                                    <span>@day.Day</span>
+                                                </label>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="app-cal-legend">
+                                <span><i></i>Spieltag</span>
+                                <span><i class="blocked"></i>Gesperrt</span>
+                                @if (Model.DatesWithTermine.Count > 0)
+                                {
+                                    <span><i class="termine"></i>Hat bereits Termine</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="app-card">
+                <div class="app-card-header">
+                    <span class="app-step">3</span>
+                    <div class="app-card-header-text">
+                        <h2>Begegnungen</h2>
+                        <p>CSV mit den Spalten <b>Heim</b>, <b>Gast</b> und optional <b>Nr</b> – eine Zeile je Begegnung. Die Mannschaften ergeben sich daraus; Heim und Gast stehen fest.</p>
+                    </div>
+                </div>
+                <div class="app-card-body">
+                    <div class="app-file">
+                        <input id="PlanFile" type="file" name="PlanFile" accept=".csv,text/csv" aria-label="Spielplan-CSV wählen" />
+                        <button type="submit" class="app-btn" asp-page-handler="Import">
+                            <partial name="_Icon" model="@("upload")" /> @(Model.IsEdit ? "Importieren und speichern" : "Einlesen")
+                        </button>
+                    </div>
+                    @if (Model.IsEdit && Model.BookedCount > 0)
+                    {
+                        <p class="app-hint app-file-hint">Beim erneuten Import bleiben Buchungen erhalten, solange die Begegnung (Heim gegen Gast) in der neuen Datei wieder vorkommt.</p>
+                    }
+
+                    @if (Model.Matches.Count == 0)
+                    {
+                        <div class="app-empty-inline app-matches-empty">Noch keine Begegnungen eingelesen.</div>
+                    }
+                    else
+                    {
+                        var teamCount = Model.Clubs.Count;
+                        <div class="app-teams">
+                            <div class="app-teams-head">
+                                <span class="app-label">@teamCount Mannschaften · @Model.Matches.Count Begegnungen</span>
+                                @if (teamCount < 6 || teamCount > 12)
+                                {
+                                    <span class="app-badge app-badge-warning">Üblich sind 6 bis 12 Mannschaften</span>
+                                }
+                            </div>
+                            <ul class="app-team-list">
+                                @foreach (var club in Model.Clubs.OrderBy(club => club.Name, StringComparer.CurrentCultureIgnoreCase))
+                                {
+                                    <li>@club.Name</li>
+                                }
+                            </ul>
+                        </div>
+                        <div class="app-table-wrap app-table-scroll">
+                            <table class="app-table">
+                                <thead>
+                                    <tr>
+                                        <th class="app-num">Nr</th>
+                                        <th>Heim</th>
+                                        <th>Gast</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < Model.Matches.Count; i++)
+                                    {
+                                        var match = Model.Matches[i];
+                                        <tr>
+                                            <td class="app-num">
+                                                <input type="hidden" name="Matches[@i].Id" value="@match.Id" />
+                                                <input type="hidden" name="Matches[@i].HomeClubId" value="@match.HomeClubId" />
+                                                <input type="hidden" name="Matches[@i].GuestClubId" value="@match.GuestClubId" />
+                                                <input type="hidden" name="Matches[@i].Location" value="@match.Location" />
+                                                @(string.IsNullOrEmpty(match.Location) ? "—" : match.Location)
+                                            </td>
+                                            <td>@Model.ClubName(match.HomeClubId)</td>
+                                            <td>@Model.ClubName(match.GuestClubId)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @for (var i = 0; i < Model.Clubs.Count; i++)
+                    {
+                        <input type="hidden" name="Clubs[@i].Id" value="@Model.Clubs[i].Id" />
+                        <input type="hidden" name="Clubs[@i].Name" value="@Model.Clubs[i].Name" />
+                    }
+                </div>
+            </section>
+
+            <div class="app-actionbar">
+                @if (Model.IsEdit)
+                {
+                    <button type="submit" class="app-btn app-btn-danger-ghost" asp-page-handler="Delete"
+                            data-confirm="Spielplan „@Model.SavedName“ wirklich löschen? Alle eingetragenen Termine gehen verloren."
+                            onclick="return confirm(this.dataset.confirm);" title="Spielplan löschen" aria-label="Spielplan löschen">
+                        <partial name="_Icon" model="@("trash")" /> <span class="app-btn-label">Löschen</span>
+                    </button>
+                    <span class="app-actionbar-spacer"></span>
+                    <a class="app-btn app-btn-ghost" href="@listUrl">Zurück</a>
+                    <button type="submit" class="app-btn app-btn-primary" asp-page-handler="Save">Änderungen speichern</button>
+                }
+                else
+                {
+                    <span class="app-hint">Erst nach dem Anlegen ist der Spielplan über seinen Link erreichbar.</span>
+                    <a class="app-btn app-btn-ghost" href="@listUrl">Abbrechen</a>
+                    <button type="submit" class="app-btn app-btn-primary" asp-page-handler="Create">Spielplan anlegen</button>
+                }
+            </div>
+        </form>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const cal = document.querySelector("[data-cal]");
+            if (cal) {
+                const boxes = Array.from(cal.querySelectorAll('input[name="BlockedDates"]'));
+                const chips = Array.from(cal.querySelectorAll("[data-weekday]"));
+                const free = cal.querySelector("[data-cal-free]");
+                const blocked = cal.querySelector("[data-cal-blocked]");
+                const ofWeekday = (wd) => boxes.filter((box) => box.dataset.wd === wd);
+                const refresh = () => {
+                    const count = boxes.filter((box) => box.checked).length;
+                    free.textContent = boxes.length - count;
+                    blocked.textContent = count;
+                    for (const chip of chips) {
+                        const days = ofWeekday(chip.dataset.weekday);
+                        const on = days.filter((box) => box.checked).length;
+                        chip.disabled = days.length === 0;
+                        chip.setAttribute("aria-pressed", on === 0 ? "false" : on === days.length ? "true" : "mixed");
+                    }
+                };
+                for (const chip of chips) {
+                    chip.addEventListener("click", () => {
+                        const days = ofWeekday(chip.dataset.weekday);
+                        const block = !days.every((box) => box.checked);
+                        days.forEach((box) => { box.checked = block; });
+                        refresh();
+                    });
+                }
+                cal.querySelector("[data-cal-clear]")?.addEventListener("click", () => {
+                    boxes.forEach((box) => { box.checked = false; });
+                    refresh();
+                });
+                cal.addEventListener("change", refresh);
+                refresh();
+            }
+
+            for (const button of document.querySelectorAll("[data-copy]")) {
+                button.addEventListener("click", async () => {
+                    const text = button.dataset.copy;
+                    try {
+                        await navigator.clipboard.writeText(text);
+                    } catch {
+                        window.prompt("Link kopieren:", text);
+                        return;
+                    }
+                    const label = button.querySelector("[data-copy-label]");
+                    button.dataset.copied = "true";
+                    if (label) label.textContent = "Kopiert";
+                    button.title = "Kopiert";
+                    setTimeout(() => {
+                        delete button.dataset.copied;
+                        if (label) label.textContent = "Kopieren";
+                        button.title = "Öffentlichen Link kopieren";
+                    }, 1800);
+                });
+            }
+        })();
+    </script>
+}

@@ -1,0 +1,17 @@
+﻿@page "/Error"
+@model ErrorModel
+@{
+    ViewData["Title"] = "Fehler";
+}
+
+<div class="app-container">
+    <div class="app-error">
+        <h1>Ein Fehler ist aufgetreten.</h1>
+        <p>Bitte versuchen Sie es erneut. Wenn der Fehler bleibt, wenden Sie sich an die Staffelleitung.</p>
+        @if (Model.ShowRequestId)
+        {
+            <p><small>Request ID: <code>@Model.RequestId</code></small></p>
+        }
+        <a class="app-btn" href="~/">Zur Startseite</a>
+    </div>
+</div>

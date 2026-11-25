@@ -1,0 +1,321 @@
+@model TermineMatrixView
+@* Date × home team matrix. Must be rendered inside a <form method="post">. *@
+@{
+    var columns = Model.HomeColumns;
+}
+@if (columns.Count == 0 || Model.Rows.Count == 0)
+{
+    <div class="app-empty-inline">
+        Für diesen Spielplan sind noch keine Begegnungen oder kein Zeitraum hinterlegt.
+    </div>
+}
+else
+{
+    <div class="app-matrix-frame" data-matrix>
+        <div class="app-scrollhint" data-scrollhint hidden>
+            <button type="button" class="app-scrollhint-btn" data-scroll="-1" aria-label="Weiter nach links">
+                <partial name="_Icon" model="@("chevron-left")" />
+            </button>
+            <span class="app-scrollhint-text" data-scrollhint-text aria-live="polite">Weitere Mannschaften – seitlich scrollen</span>
+            <button type="button" class="app-scrollhint-btn" data-scroll="1" aria-label="Weiter nach rechts">
+                <partial name="_Icon" model="@("chevron-right")" />
+            </button>
+        </div>
+        <div class="app-matrix-scroller" data-scroller>
+            <div class="app-matrix-wrap" tabindex="0" aria-label="Terminmatrix">
+                <table class="app-matrix" style="--cols: @columns.Count" data-admin="@(Model.IsAdmin ? "true" : null)">
+                    <colgroup>
+                        <col class="app-col-date" />
+                        @foreach (var home in columns)
+                        {
+                            <col />
+                        }
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="app-matrix-date" scope="col">Datum</th>
+                            @foreach (var home in columns)
+                            {
+                                var own = Model.IsOwnColumn(home.Id);
+                                var away = Model.HasOpenAwayMatch(home.Id);
+                                <th scope="col" data-col title="@home.Name" data-own="@(own ? "true" : null)" data-away="@(away ? "true" : null)">
+                                    <span class="app-col-name">@home.Name</span>
+                                    @if (own)
+                                    {
+                                        <span class="app-col-tag">Ihre Heimspiele</span>
+                                    }
+                                    else if (away)
+                                    {
+                                        <span class="app-col-tag">Auswärts offen</span>
+                                    }
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.Rows)
+                        {
+                            if (row.Kind == TermineMatrixRowKind.Month)
+                            {
+                                <tr class="app-matrix-month">
+                                    <th colspan="@(columns.Count + 1)" scope="colgroup"><span>@row.Title</span></th>
+                                </tr>
+                                continue;
+                            }
+
+                            if (row.Kind == TermineMatrixRowKind.Blocked)
+                            {
+                                <tr class="app-matrix-blocked">
+                                    <th class="app-matrix-date" scope="row">
+                                        <span class="wd">@TermineDates.FormatWeekday(row.Iso)</span><span class="dm">@TermineDates.FormatDayMonth(row.Iso)</span>
+                                    </th>
+                                    <td colspan="@columns.Count">
+                                        <span>
+                                            Gesperrt
+                                            @if (row.Count > 1)
+                                            {
+                                                <text>· @row.Count Tage bis @TermineDates.FormatWeekday(row.ToIso) @TermineDates.FormatDayMonth(row.ToIso)</text>
+                                            }
+                                        </span>
+                                    </td>
+                                </tr>
+                                continue;
+                            }
+
+                            var date = row.Iso;
+                            var dateLabel = TermineDates.FormatWithWeekday(date);
+                            <tr data-weekend="@(TermineDates.IsWeekend(date) ? "true" : null)">
+                                <th class="app-matrix-date" scope="row" title="@dateLabel">
+                                    <span class="wd">@TermineDates.FormatWeekday(date)</span><span class="dm">@TermineDates.FormatDayMonth(date)</span>
+                                </th>
+                                @foreach (var home in columns)
+                                {
+                                    var own = Model.IsOwnColumn(home.Id);
+                                    var slot = Model.Slot(home.Id, date);
+                                    var key = home.Id + "|" + date;
+                                    <td data-own="@(own ? "true" : null)">
+                                        <div class="app-cell">
+                                            @if (slot is null)
+                                            {
+                                                if (own && Model.CanOffer)
+                                                {
+                                                    <label class="app-pick" title="@($"{dateLabel} auswählen")">
+                                                        <input type="checkbox" name="SelectedDates" value="@date" aria-label="@($"{dateLabel} auswählen")" />
+                                                        <span class="app-pick-text when-off">auswählen</span>
+                                                        <span class="app-pick-text when-on">ausgewählt</span>
+                                                    </label>
+                                                    <button type="submit"
+                                                            class="app-plus"
+                                                            asp-page-handler="Offer"
+                                                            name="PlusDate"
+                                                            value="@date"
+                                                            title="@($"Heimtermin am {dateLabel} anbieten")"
+                                                            aria-label="@($"Heimtermin am {dateLabel} anbieten")">+</button>
+                                                }
+                                            }
+                                            else if (string.IsNullOrEmpty(slot.GuestClubId))
+                                            {
+                                                if (!Model.IsAdmin && !own && Model.CanBookCell(home.Id, date))
+                                                {
+                                                    <button type="submit"
+                                                            class="app-slot"
+                                                            data-state="bookable"
+                                                            asp-page-handler="Book"
+                                                            name="BookKey"
+                                                            value="@key"
+                                                            title="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr buchen")"
+                                                            data-confirm="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr verbindlich buchen?\n\nDanach kann nur die Staffelleitung den Termin wieder freigeben.")"
+                                                            onclick="return confirm(this.dataset.confirm);">
+                                                        <span class="app-slot-time">@slot.Time</span>
+                                                        <span class="app-slot-sub">Buchen</span>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <div class="app-slot" data-state="offer" title="@($"Terminvorschlag {home.Name}, {dateLabel} {slot.Time} Uhr – frei")">
+                                                        <span class="app-slot-head">
+                                                            <span class="app-slot-time">@slot.Time</span>
+                                                            @if (Model.IsAdmin)
+                                                            {
+                                                                <span class="app-slot-tools">
+                                                                    <button type="submit" class="app-tool app-tool-danger"
+                                                                            asp-page-handler="DeleteSlot" name="SlotKey" value="@key"
+                                                                            title="Terminvorschlag löschen" aria-label="@($"Terminvorschlag {home.Name} am {dateLabel} löschen")"
+                                                                            data-confirm="@($"Terminvorschlag von {home.Name} am {dateLabel} um {slot.Time} Uhr löschen?")"
+                                                                            onclick="return confirm(this.dataset.confirm);">
+                                                                        <partial name="_Icon" model="@("trash")" />
+                                                                    </button>
+                                                                </span>
+                                                            }
+                                                            else if (own)
+                                                            {
+                                                                <span class="app-slot-tools">
+                                                                    <button type="submit" class="app-tool"
+                                                                            asp-page-handler="Withdraw" name="WithdrawKey" value="@key"
+                                                                            title="Terminvorschlag zurückziehen" aria-label="@($"Terminvorschlag am {dateLabel} zurückziehen")">
+                                                                        <partial name="_Icon" model="@("x")" />
+                                                                    </button>
+                                                                </span>
+                                                            }
+                                                        </span>
+                                                        <span class="app-slot-sub">frei</span>
+                                                    </div>
+                                                    if (!Model.IsAdmin && !own && Model.BookBlockReason(home.Id, date) is { } reason)
+                                                    {
+                                                        <span class="app-slot-note" title="@reason">@reason</span>
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                var match = TermineRules.FindMatch(Model.Tenant, slot.MatchId);
+                                                var number = match is not null && !string.IsNullOrEmpty(match.Location) ? " · Nr " + match.Location : "";
+                                                var guest = Model.ClubName(slot.GuestClubId);
+                                                <div class="app-slot" data-state="booked" data-mine="@(Model.IsMine(slot) ? "true" : null)"
+                                                     title="@($"{home.Name} – {guest}{number}, {dateLabel} {slot.Time} Uhr")">
+                                                    <span class="app-slot-head">
+                                                        <span class="app-slot-time">@slot.Time</span>
+                                                        @if (Model.IsAdmin)
+                                                        {
+                                                            <span class="app-slot-tools">
+                                                                <button type="submit" class="app-tool"
+                                                                        asp-page-handler="Release" name="SlotKey" value="@key"
+                                                                        title="Buchung aufheben (Vorschlag bleibt)" aria-label="@($"Buchung {home.Name} – {guest} am {dateLabel} aufheben")"
+                                                                        data-confirm="@($"Buchung von {guest} bei {home.Name} am {dateLabel} aufheben?\n\nDer Terminvorschlag bleibt bestehen und ist wieder frei.")"
+                                                                        onclick="return confirm(this.dataset.confirm);">
+                                                                    <partial name="_Icon" model="@("undo")" />
+                                                                </button>
+                                                                <button type="submit" class="app-tool app-tool-danger"
+                                                                        asp-page-handler="DeleteSlot" name="SlotKey" value="@key"
+                                                                        title="Termin löschen" aria-label="@($"Termin {home.Name} – {guest} am {dateLabel} löschen")"
+                                                                        data-confirm="@($"Termin {home.Name} – {guest} am {dateLabel} komplett löschen?")"
+                                                                        onclick="return confirm(this.dataset.confirm);">
+                                                                    <partial name="_Icon" model="@("trash")" />
+                                                                </button>
+                                                            </span>
+                                                        }
+                                                    </span>
+                                                    <span class="app-slot-sub">@guest@number</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+        (() => {
+            // Fit all team columns into the visible width. Each column needs enough
+            // room for its team name in at most two lines (never below --col-min).
+            // Spare width is spread evenly (narrow columns grow first). If the needs
+            // do not fit, the matrix scrolls and a hint says how many teams are hidden.
+            const frame = document.currentScript.previousElementSibling;
+            const wrap = frame.querySelector(".app-matrix-wrap");
+            const scroller = frame.querySelector("[data-scroller]");
+            const table = frame.querySelector(".app-matrix");
+            const hint = frame.querySelector("[data-scrollhint]");
+            const text = frame.querySelector("[data-scrollhint-text]");
+            const prev = frame.querySelector('[data-scroll="-1"]');
+            const next = frame.querySelector('[data-scroll="1"]');
+            const heads = Array.from(frame.querySelectorAll("thead th[data-col]"));
+            const cols = Array.from(frame.querySelectorAll("colgroup col")).slice(1);
+            const dateHead = frame.querySelector("thead .app-matrix-date");
+            const teams = (n) => n === 1 ? "1 Mannschaft" : n + " Mannschaften";
+            const toPx = (value) => parseFloat(value) * (value.trim().endsWith("rem")
+                ? parseFloat(getComputedStyle(document.documentElement).fontSize) : 1);
+            let needs = [];
+
+            const measureNeeds = () => {
+                const probe = document.createElement("span");
+                probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;left:-9999px;top:0";
+                document.body.appendChild(probe);
+                const cs = getComputedStyle(heads[0].querySelector(".app-col-name"));
+                probe.style.font = cs.font;
+                probe.style.letterSpacing = cs.letterSpacing;
+                const width = (value) => { probe.textContent = value; return probe.getBoundingClientRect().width; };
+                const th = getComputedStyle(heads[0]);
+                const pad = parseFloat(th.paddingLeft) + parseFloat(th.paddingRight) + 2;
+                const base = toPx(getComputedStyle(table).getPropertyValue("--col-min"));
+                needs = heads.map((head) => {
+                    const full = head.querySelector(".app-col-name").textContent.trim().replace(/\s+/g, " ");
+                    const parts = full.split(/(?<=[ -])/);
+                    let best = width(full);
+                    for (let i = 1; i < parts.length; i++) {
+                        best = Math.min(best, Math.max(
+                            width(parts.slice(0, i).join("").trimEnd()),
+                            width(parts.slice(i).join("").trim())));
+                    }
+                    return Math.max(base, Math.ceil(best + pad));
+                });
+                probe.remove();
+                const dateWidth = toPx(getComputedStyle(scroller).getPropertyValue("--date-w"));
+                table.style.setProperty("--matrix-min", Math.ceil(dateWidth + needs.reduce((a, b) => a + b, 0)) + "px");
+            };
+
+            const distribute = () => {
+                const dateWidth = toPx(getComputedStyle(scroller).getPropertyValue("--date-w"));
+                const available = wrap.clientWidth - dateWidth - 1;
+                const total = needs.reduce((a, b) => a + b, 0);
+                let level = 0;
+                if (available > total) {
+                    // Water-filling: find the level L with sum(max(need, L)) = available.
+                    const sorted = [...needs].sort((a, b) => b - a);
+                    let fixed = 0;
+                    let k = 0;
+                    for (; k < sorted.length; k++) {
+                        const candidate = (available - fixed) / (sorted.length - k);
+                        if (sorted[k] <= candidate) break;
+                        fixed += sorted[k];
+                    }
+                    level = (available - fixed) / (sorted.length - k);
+                }
+                needs.forEach((need, i) => { cols[i].style.width = Math.floor(Math.max(need, level)) + "px"; });
+            };
+
+            const update = () => {
+                let left = 0;
+                let right = 0;
+                if (wrap.scrollWidth - wrap.clientWidth > 1) {
+                    const box = wrap.getBoundingClientRect();
+                    const visibleLeft = box.left + dateHead.getBoundingClientRect().width;
+                    const visibleRight = box.left + wrap.clientWidth;
+                    for (const head of heads) {
+                        const r = head.getBoundingClientRect();
+                        if (r.right > visibleRight + 1) right++;
+                        else if (r.left < visibleLeft - 1) left++;
+                    }
+                }
+                hint.hidden = left + right === 0;
+                if (left || right) {
+                    text.textContent =
+                        left && right ? `${teams(left)} links und ${teams(right)} rechts ausgeblendet – seitlich scrollen` :
+                        right ? `${teams(right)} weiter rechts – seitlich scrollen` :
+                        `${teams(left)} weiter links – zurückscrollen`;
+                }
+                scroller.dataset.moreLeft = left > 0;
+                scroller.dataset.moreRight = right > 0;
+                prev.disabled = left === 0;
+                next.disabled = right === 0;
+            };
+
+            const layout = () => { distribute(); update(); };
+
+            for (const button of [prev, next]) {
+                button.addEventListener("click", () => {
+                    const step = (wrap.clientWidth - dateHead.getBoundingClientRect().width) * 0.8;
+                    wrap.scrollBy({ left: Number(button.dataset.scroll) * step, behavior: "smooth" });
+                });
+            }
+            wrap.addEventListener("scroll", update, { passive: true });
+            new ResizeObserver(layout).observe(wrap);
+            measureNeeds();
+            layout();
+            document.fonts?.ready.then(() => { measureNeeds(); layout(); });
+        })();
+    </script>
+}

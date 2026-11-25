@@ -1,0 +1,3 @@
+# Ignore runtime/local cache in this folder.
+*
+!.gitignore

@@ -1,0 +1,151 @@
+@page "/termine/{id?}"
+@model TermineModel
+@{
+    ViewData["Title"] = Model.Tenant?.Name ?? "Terminplanung";
+}
+
+@if (Model.Tenant is null)
+{
+    <div class="app-container app-container-narrow">
+        <header class="app-page-header">
+            <div class="app-page-header-text">
+                <h1>Terminplanung</h1>
+                <p class="app-lead">Wählen Sie den Spielplan Ihrer Staffel. Dort bieten Sie Heimtermine an und buchen Auswärtstermine.</p>
+            </div>
+        </header>
+
+        <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+
+        @if (Model.Plans.Count == 0)
+        {
+            <div class="app-empty">
+                <span class="app-empty-icon"><partial name="_TermineNavIcon" /></span>
+                <h2>Noch keine Spielpläne</h2>
+                <p>Sobald die Staffelleitung einen Spielplan veröffentlicht, erscheint er hier.</p>
+            </div>
+        }
+        else
+        {
+            <ul class="app-plan-list">
+                @foreach (var plan in Model.Plans)
+                {
+                    var href = Url.Page("/Appointment/Termine", new { id = plan.Id });
+                    <li class="app-plan">
+                        <div class="app-plan-main">
+                            <a class="app-plan-name" href="@href">@plan.Name</a>
+                            <div class="app-stats">
+                                @if (plan.FirstDate is not null)
+                                {
+                                    <span>@TermineDates.FormatDisplay(plan.FirstDate) – @TermineDates.FormatDisplay(plan.LastDate!)</span>
+                                }
+                                <span><strong>@plan.ClubCount</strong> Mannschaften</span>
+                            </div>
+                        </div>
+                        <div class="app-plan-progress">
+                            <span><strong>@plan.ScheduledCount</strong> von @plan.MatchCount Begegnungen terminiert</span>
+                            <div class="app-progress" role="presentation"><span style="width: @(plan.ScheduledPercent)%"></span></div>
+                        </div>
+                        <div class="app-plan-actions">
+                            <a class="app-btn app-btn-primary" href="@href">Öffnen</a>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+else
+{
+    var tenant = Model.Tenant;
+    var summary = Model.Summary!;
+    var matrix = Model.Matrix!;
+    <div class="app-termine-shell app-fill">
+        <div class="app-termine-head">
+            <div class="app-termine-title">
+                <div>
+                    <nav class="app-breadcrumb" aria-label="Pfad">
+                        <a href="@Url.Page("/Appointment/Termine", new { id = (string?)null })">Terminplanung</a>
+                    </nav>
+                    <h1>@tenant.Name</h1>
+                </div>
+                <div class="app-termine-progress">
+                    <div class="app-progress" role="presentation"><span style="width: @(summary.ScheduledPercent)%"></span></div>
+                    <span class="app-stats"><span><strong>@summary.ScheduledCount</strong> von @summary.MatchCount Begegnungen terminiert</span></span>
+                </div>
+            </div>
+
+            <div class="app-termine-bar" data-needs-team="@(Model.SelectedClubId is null ? "true" : null)">
+                <form method="post" asp-page-handler="SetClub" class="app-field">
+                    <label for="ActingClubId">Ihre Mannschaft</label>
+                    <select id="ActingClubId" class="app-select" name="ActingClubId" onchange="this.form.submit()">
+                        <option value="">Bitte wählen …</option>
+                        @foreach (var club in Model.ActingClubOptions)
+                        {
+                            if (string.Equals(club.Id, Model.SelectedClubId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@club.Id" selected>@club.Name</option>
+                            }
+                            else
+                            {
+                                <option value="@club.Id">@club.Name</option>
+                            }
+                        }
+                    </select>
+                    <noscript><button type="submit" class="app-btn app-btn-sm">Übernehmen</button></noscript>
+                </form>
+
+                @if (Model.SelectedClubId is null)
+                {
+                    <p class="app-hint app-team-hint">
+                        Wählen Sie Ihre Mannschaft, um Heimtermine anzubieten oder Terminvorschläge anderer Mannschaften als Gast zu buchen.
+                    </p>
+                }
+                else
+                {
+                    <div class="app-termine-bar-divider"></div>
+                    <div class="app-my-stats">
+                        <span class="app-label">Ihre Spiele</span>
+                        <span><strong>@Model.MyHomeScheduled/@Model.MyHomeTotal</strong> Heim</span>
+                        <span><strong>@Model.MyAwayScheduled/@Model.MyAwayTotal</strong> Auswärts terminiert</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="app-termine-body">
+            <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+
+            <partial name="_TermineMatches" model="matrix" />
+
+            <form method="post" class="app-termine-form">
+                <div class="app-matrix-toolbar">
+                    @if (Model.CanOffer)
+                    {
+                        <div class="app-offer">
+                            <div class="app-field">
+                                <label for="Time">Uhrzeit</label>
+                                <input id="Time" class="app-time-input" asp-for="Time" type="time" step="300" />
+                            </div>
+                            <button type="submit" class="app-btn app-btn-primary" asp-page-handler="Offer">Ausgewählte Tage anbieten</button>
+                            <span class="app-hint">Tage in Ihrer Spalte auswählen und gemeinsam anbieten – oder direkt mit <b>+</b> einen einzelnen Tag.</span>
+                        </div>
+                    }
+                    else if (Model.SelectedClubId is not null && matrix.CanBookAsGuest)
+                    {
+                        <span class="app-hint">Spalten mit <b>„Auswärtsspiel offen“</b> enthalten Ihre noch offenen Auswärtsspiele. Freie Terminvorschläge dort können Sie buchen.</span>
+                    }
+                    <div class="app-legend" aria-label="Legende">
+                        <span><i class="lg-offer"></i>Terminvorschlag frei</span>
+                        <span><i class="lg-booked"></i>Gebucht</span>
+                        @if (Model.SelectedClubId is not null)
+                        {
+                            <span><i class="lg-mine"></i>Ihr Spiel</span>
+                        }
+                        <span><i class="lg-blocked"></i>Gesperrt</span>
+                    </div>
+                </div>
+                <partial name="_TermineMatrix" model="matrix" />
+            </form>
+        </div>
+    </div>
+}

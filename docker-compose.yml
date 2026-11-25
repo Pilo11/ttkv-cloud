@@ -9,3 +9,9 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_URLS: http://+:8080
+      CACHE_ROOT: /var/lib/cloud-services-cache
+    volumes:
+      - cloud_services_cache:/var/lib/cloud-services-cache
+
+volumes:
+  cloud_services_cache:
