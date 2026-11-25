@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Server-specific Docker Compose settings (may contain the Staffelleitung key)
+docker-compose.override.yml
