@@ -39,100 +39,15 @@ docker compose up --build
 
 Then open http://localhost:8080.
 
-## Production rollout
+## Production
 
-The app speaks plain HTTP on port 8080. In production it runs in Docker behind a reverse proxy that terminates HTTPS.
+Production runs on a server behind a Cloudflare Tunnel. Every pull request merged into `main` is
+released (GitHub release `v<x.y.z>`) and rolled out over SSH; there is no beta stage. Secrets
+(SSH, tunnel token, Staffelleitung key) live in the GitHub environment `production`. Renovate opens
+one pull request with every dependency update. Setup and day-to-day: [deploy/README.md](deploy/README.md).
 
-### 1. Prepare the server
-
-- Linux host with Docker and the Compose plugin.
-- A DNS name pointing to the server, e.g. `termine.example.de`.
-- Outbound HTTPS to `ttvn.click-tt.de` and `ttde-id.liga.nu` (myTT proxy).
-
-### 2. Get the code
-
-```bash
-git clone git@github.com:Pilo11/ttkv-cloud.git
-cd ttkv-cloud
-```
-
-### 3. Create the Staffelleitung key (never commit it)
-
-```bash
-echo "TERMINE_ADMIN_KEY=$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '=')" > .env
-chmod 600 .env
-```
-
-`.env` is git-ignored. Without a key the app generates one into the data volume and logs it at startup.
-
-### 4. Add server-specific settings
-
-Create `docker-compose.override.yml` next to `docker-compose.yml` (git-ignored, merged automatically by `docker compose`):
-
-```yaml
-services:
-  cloud-services:
-    ports: !override
-      - "127.0.0.1:8080:8080"   # only the reverse proxy may reach the app
-    environment:
-      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"   # trust X-Forwarded-Proto → https links and Secure cookies
-      AllowedHosts: termine.example.de
-      Termine__AdminKey: ${TERMINE_ADMIN_KEY}
-    volumes:
-      - dataprotection_keys:/root/.aspnet/DataProtection-Keys   # forms stay valid across redeploys
-
-volumes:
-  dataprotection_keys:
-```
-
-Without `ASPNETCORE_FORWARDEDHEADERS_ENABLED`, the copied Mannschaftsführer link would start with `http://`, and the click-TT login cookies would lose their `Secure` flag.
-
-### 5. Reverse proxy with HTTPS
-
-Caddy (gets certificates automatically and forwards Host and `X-Forwarded-Proto`):
-
-```
-termine.example.de {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-For nginx, add `proxy_set_header Host $host;` and `proxy_set_header X-Forwarded-Proto $scheme;`.
-
-### 6. Start and check
-
-```bash
-docker compose up -d --build
-docker compose logs cloud-services | grep "Staffelleitung erreichbar"
-```
-
-- `https://termine.example.de/` and `/termine` load.
-- `https://termine.example.de/staffelleitung/<key>` opens the Staffelleitung; any other key gives 404.
-- Create a test Spielplan; the copied Mannschaftsführer link starts with `https://`.
-- myTT: log in to click-TT inside the iframe.
-
-Share the Staffelleitung URL only with the Staffelleiter.
-
-### Updates and rollback
-
-```bash
-git pull
-docker compose up -d --build
-```
-
-Spielpläne, the key and the data-protection keys live in Docker volumes and survive rebuilds. To roll back: `git checkout <previous commit>` and run `docker compose up -d --build` again.
-
-### Backups
-
-All Spielplan data is in the `cloud_services_cache` volume (`docker volume ls` shows the full name, e.g. `ttkv-cloud_cloud_services_cache`):
-
-```bash
-docker run --rm -v ttkv-cloud_cloud_services_cache:/data -v "$PWD":/backup alpine \
-  tar czf /backup/ttkv-termine-$(date +%F).tar.gz -C /data .
-```
-
-### Security notes
+## Security notes
 
 - There is no login. Anyone with the public link can act for any Mannschaft; only the secret key protects the Staffelleitung.
-- The repository is public: keep the key in `.env` or the data volume, never in the repo.
+- The repository is public: the key lives in the GitHub environment `production` (or the data volume locally), never in the repo.
 - click-TT credentials typed into the myTT iframe pass through this server (same-origin proxy).

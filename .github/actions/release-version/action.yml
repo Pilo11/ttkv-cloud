@@ -1,0 +1,44 @@
+# The version main would get for a commit: GitVersion (GitVersion.yml) on a local branch main at that
+# commit, from the release tags, outside GitVersion's GitHub mode (which would take the branch of the
+# run). Release takes it for the merged pull request it releases; the CI job release-version computes
+# it for every pull request with the same steps, so an update that breaks them (the action, the tool,
+# its command line or GitVersion.yml, e.g. Renovate's pull request) fails the pull request, never
+# first the release after its merge.
+#
+# The checkout must hold the whole history and the tags (actions/checkout with fetch-depth: 0). The
+# step moves the checkout to the commit, on a local branch main.
+name: Release version
+description: The version main would get for a commit (MajorMinorPatch), computed by GitVersion as the workflow Release computes it.
+inputs:
+  sha:
+    description: The commit to version (default the checkout's)
+    required: false
+    default: HEAD
+outputs:
+  version:
+    description: MajorMinorPatch, e.g. 1.0.10
+    value: ${{ steps.version.outputs.version }}
+runs:
+  using: composite
+  steps:
+    # GitVersion is a .NET tool.
+    - uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+    # No floating major tag exists for this action (only vX.Y.Z), so the full version is pinned. Each
+    # of its versions takes one range of GitVersion (v5: 7.0.x) and refuses any other; Renovate moves
+    # the action alone, so versionSpec moves by hand in the same pull request, whose job
+    # release-version fails until it does.
+    - uses: gittools/actions/gitversion/setup@v5.0.0
+      with:
+        versionSpec: "7.0.x"
+    - id: version
+      shell: bash
+      env:
+        SHA: ${{ inputs.sha }}
+      run: |
+        git checkout -q -B main "$SHA"
+        # GitVersion 7's command line (POSIX options); no telemetry from the runner.
+        version="$(env -u GITHUB_ACTIONS -u GITHUB_REF -u GITHUB_REF_NAME dotnet-gitversion --show-variable MajorMinorPatch --telemetry-opt-out)"
+        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error title=Release version::GitVersion gave '$version', not a version x.y.z"; exit 1; }
+        echo "version=$version" >> "$GITHUB_OUTPUT"

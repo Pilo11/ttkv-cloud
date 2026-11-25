@@ -1,0 +1,60 @@
+# Self-hosted Renovate run. Keeps every reference up to date: the NuGet packages, the .NET SDK in
+# global.json, the Docker images in both Compose files and the Dockerfile, GitHub Actions.
+#
+# Setup (one-time): create a fine-grained personal access token with repository access "Only
+# select repositories" -> this repository, and only these repository permissions:
+#   Contents          read and write  push the renovate/* branches the pull requests come from
+#   Pull requests     read and write  open and update the pull requests
+#   Issues            read and write  the Dependency Dashboard issue
+#   Workflows         read and write  push updates of .github/workflows (GitHub Actions versions)
+#   Commit statuses   read            branch status of a pull request
+#   Metadata          read            mandatory, preselected
+#   Dependabot alerts read            optional: security update PRs; without it Renovate warns
+#                                     each run while Dependabot alerts are on for the repository
+# Store it as the repository secret RENOVATE_TOKEN. Issues must be enabled in the repository.
+#
+# Every update comes in one pull request (renovate.json, branch renovate/all) into main, never merged
+# automatically: merged, it goes to production like every pull request. .NET majors come apart, only
+# after approval on the Dependency Dashboard. Every run moves the open one to the newest versions.
+#
+# Timing lives here, not in renovate.json: every run (weekly cron or manual dispatch) opens or
+# updates it in one run (prHourlyLimit 0). A top-level "schedule" in renovate.json would leave updates
+# as "Awaiting Schedule" whenever a run falls outside it.
+name: Renovate
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: Renovate log level
+        default: info
+        type: choice
+        options: [info, debug]
+      dryRun:
+        description: Dry run (no PRs)
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run Renovate
+        # No floating major tag exists for this action (only vX.Y.Z), so the full version is pinned.
+        uses: renovatebot/github-action@v46.3.14
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_PLATFORM: github
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}

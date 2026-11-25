@@ -1,0 +1,29 @@
+# Only a merged pull request releases: merged into main it goes to production. This workflow starts
+# Release on main (workflow_dispatch, which GITHUB_TOKEN may start) with the pull request's number;
+# Release releases its merge commit. A push to main and a pull request closed without merging release
+# nothing. Release runs on main, not in this pull_request run, whose ref is not main: the environment
+# production's deployment branch rule (main only) would refuse it.
+name: Merged
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release:
+    name: Start the release
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main -f pull_request="$NUMBER"
+          echo "### Pull request #$NUMBER → Release to production" >> "$GITHUB_STEP_SUMMARY"
