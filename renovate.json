@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Europe/Berlin",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 0,
+  "rangeStrategy": "bump",
+  "separateMajorMinor": false,
+  "lockFileMaintenance": {
+    "enabled": false
+  },
+  "vulnerabilityAlerts": {
+    "groupName": "all dependencies",
+    "groupSlug": "all"
+  },
+  "packageRules": [
+    {
+      "description": "One pull request for every update, majors included, never one per dependency (branch renovate/all) into main: NuGet packages, the .NET SDK in global.json, every Docker image (Dockerfile, both Compose files) and GitHub Actions. Every run moves the open one to the newest versions. Merged, it goes to production (.github/workflows/release.yml)",
+      "matchPackageNames": ["*"],
+      "groupName": "all dependencies",
+      "groupSlug": "all"
+    },
+    {
+      "description": "GitHub Actions keep their version tag: the major tag (actions/checkout@v7), the full version where an action publishes none (renovatebot/github-action@v46.3.14), never a commit digest",
+      "matchManagers": ["github-actions"],
+      "pinDigests": false
+    },
+    {
+      "description": ".NET majors are kept apart from the minors and patches of the same dependency, so those still come in the one pull request",
+      "matchPackageNames": [
+        "dotnet-sdk",
+        "mcr.microsoft.com/dotnet/*",
+        "Microsoft.AspNetCore.*",
+        "Microsoft.Extensions.*"
+      ],
+      "separateMajorMinor": true
+    },
+    {
+      "description": ".NET majors (the SDK in global.json, the dotnet images) need the target framework net10.0 moved by hand: only after approval on the Dependency Dashboard, then together as a pull request of their own",
+      "matchPackageNames": [
+        "dotnet-sdk",
+        "mcr.microsoft.com/dotnet/*",
+        "Microsoft.AspNetCore.*",
+        "Microsoft.Extensions.*"
+      ],
+      "matchUpdateTypes": ["major"],
+      "groupName": "dotnet",
+      "groupSlug": "dotnet",
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

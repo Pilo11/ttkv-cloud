@@ -1,0 +1,277 @@
+# Releases and rollout, production only. Builds the app's image, keeps it in a GitHub release (never
+# in a registry) and rolls the release out over SSH to the server's stack behind its Cloudflare
+# Tunnel. Only a merged pull request releases: the workflow Merged starts this one on main.
+#   a pull request merged into main  -> v1.0.1, a release with its tag, rolled out
+#   by hand (Run workflow)           -> roll an existing release out again (redeploy, roll back)
+# Never on a push: a fix pushed to main without a pull request would roll out what nobody reviewed.
+# This workflow runs the CI (ci.yml, workflow_call) on the merge commit before it builds.
+# Setup, secrets and settings: deploy/README.md. The values of the stack on the server are code in
+# deploy/stages/production.conf.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to roll out, e.g. 1.0.1 (empty = the newest)
+        type: string
+        default: ""
+      pull_request:
+        description: Merged pull request to release instead (the workflow Merged sets it)
+        type: string
+        default: ""
+
+# One run at a time, never cancelled halfway; a newer run waits (and replaces an older waiting one,
+# so a burst of merges releases the newest merge).
+concurrency:
+  group: release-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # gh pr view: the merged pull request to release.
+      pull-requests: read
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      sha: ${{ steps.prepare.outputs.sha }}
+      build: ${{ steps.prepare.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Only a merged pull request is released: its merge commit (merge, squash or rebase), not what
+      # main holds by now, in a run on main.
+      - id: merged
+        if: inputs.pull_request != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ inputs.pull_request }}
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          pr="$(gh pr view "$PULL_REQUEST" --json state,baseRefName,mergeCommit)" || fail "cannot read pull request #$PULL_REQUEST"
+          [[ "$(jq -r .state <<<"$pr")" == MERGED ]] || fail "pull request #$PULL_REQUEST is not merged: only a merge is released"
+          base="$(jq -r .baseRefName <<<"$pr")" sha="$(jq -r .mergeCommit.oid <<<"$pr")"
+          [[ "$base" == main ]] || fail "pull request #$PULL_REQUEST was merged into $base: only main is released"
+          [[ "$GITHUB_REF" == refs/heads/main ]] || fail "run this workflow on main"
+          latest="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+          [[ -z "$latest" ]] || git merge-base --is-ancestor "$latest" "$sha" ||
+            fail "$sha is behind the latest release $latest; to go back, run this workflow by hand with that version"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # The version main gets for this commit: the same steps as CI's job release-version on every
+      # pull request. They leave the checkout on that commit.
+      - id: version
+        if: inputs.pull_request != ''
+        uses: ./.github/actions/release-version
+        with:
+          sha: ${{ steps.merged.outputs.sha }}
+      - id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          PULL_REQUEST: ${{ inputs.pull_request }}
+          MERGE_SHA: ${{ steps.merged.outputs.sha }}
+          MAIN_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          build=true
+          if [[ -z "$PULL_REQUEST" ]]; then
+            version="${INPUT_VERSION#v}"
+            [[ -n "$version" ]] || version="$(gh release view --json tagName --jq .tagName || true)"
+            version="${version#v}"
+            [[ -n "$version" ]] || fail "there is no release yet: merge a pull request into main"
+            gh release view "v$version" >/dev/null 2>&1 || fail "there is no GitHub release v$version"
+            sha="$(git rev-list -n 1 "v$version")" build=false
+          else
+            sha="$MERGE_SHA" version="$MAIN_VERSION"
+            [[ -n "$sha" && -n "$version" ]] || fail "no merge commit or version for pull request #$PULL_REQUEST"
+            # The tag's commit on GitHub (the peeled line of an annotated tag comes last), empty when none.
+            remote="$(git ls-remote --tags origin "v$version" "v$version^{}")" || fail "cannot read the tags of origin"
+            tagged="$(tail -n 1 <<<"$remote" | cut -f 1)"
+            [[ -z "$tagged" || "$tagged" == "$sha" ]] || fail "tag v$version already exists on another commit ($tagged)"
+            if gh release view "v$version" >/dev/null 2>&1; then build=false; fi   # released already: roll it out again
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "$version is not a release x.y.z"
+          printf 'version=%s\nsha=%s\nbuild=%s\n' "$version" "$sha" "$build" | tee -a "$GITHUB_OUTPUT"
+          echo "### $version → production (${PULL_REQUEST:+pull request #$PULL_REQUEST, }new release: $build)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Stops the run before CI, build and rollout when a setting or secret is missing or malformed in
+  # the environment production. Lists every problem, never a value.
+  settings:
+    name: Settings of production
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+      DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+      DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+      CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+      TERMINE_ADMIN_KEY: ${{ secrets.TERMINE_ADMIN_KEY }}
+    steps:
+      - run: |
+          errors=()
+          for name in DEPLOY_SSH_HOST DEPLOY_SSH_USER DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS CLOUDFLARE_TUNNEL_TOKEN TERMINE_ADMIN_KEY; do
+            [[ -n "${!name}" ]] || errors+=("secret $name is missing in environment production")
+          done
+          [[ -n "$PUBLIC_URL" ]] || errors+=("variable PUBLIC_URL is missing in environment production")
+          [[ -z "$PUBLIC_URL" || "$PUBLIC_URL" =~ ^https://[a-z0-9.-]+\.[a-z]+$ ]] ||
+            errors+=("variable PUBLIC_URL in environment production must be https://<public host>, no path, no trailing slash")
+          # The app's rule for the key (StaffelleitungAccess), with a stricter minimum length.
+          [[ -z "$TERMINE_ADMIN_KEY" || "$TERMINE_ADMIN_KEY" =~ ^[A-Za-z0-9_-]{24,}$ ]] ||
+            errors+=("secret TERMINE_ADMIN_KEY in environment production must be at least 24 characters of A-Z a-z 0-9 - _")
+          # A tunnel token is base64 of {"a": account, "t": tunnel id, "s": secret}, not the whole
+          # `cloudflared service install …` command the dashboard shows it in.
+          token="$CLOUDFLARE_TUNNEL_TOKEN"
+          while (( ${#token} % 4 )); do token+="="; done
+          [[ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]] || base64 -d <<<"$token" 2>/dev/null | jq -e '.a and .t and .s' >/dev/null 2>&1 ||
+            errors+=("secret CLOUDFLARE_TUNNEL_TOKEN in environment production is not a tunnel token (only the long string after 'cloudflared service install')")
+          if [[ -n "$DEPLOY_SSH_KEY" ]]; then
+            printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/key" && chmod 0600 "$RUNNER_TEMP/key"
+            ssh-keygen -y -P '' -f "$RUNNER_TEMP/key" >/dev/null 2>&1 || errors+=("secret DEPLOY_SSH_KEY is not an OpenSSH private key without passphrase")
+            rm -f "$RUNNER_TEMP/key"
+          fi
+          host="$DEPLOY_SSH_HOST"
+          [[ "$DEPLOY_SSH_PORT" == 22 ]] || host="[$DEPLOY_SSH_HOST]:$DEPLOY_SSH_PORT"
+          [[ -z "$DEPLOY_SSH_KNOWN_HOSTS" ]] || ssh-keygen -F "$host" -f <(printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS") >/dev/null ||
+            errors+=("secret DEPLOY_SSH_KNOWN_HOSTS has no host key for $host")
+          # GitHub creates a missing environment silently, open to every branch.
+          rule="$(gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq '.deployment_branch_policy != null' 2>/dev/null)" || rule=unknown
+          [[ "$rule" != false ]] || errors+=("environment production must allow only the branch main (Settings → Environments → Deployment branches and tags)")
+          [[ "$rule" != unknown ]] || echo "::warning::could not read the deployment rules of environment production"
+          for message in ${errors[@]+"${errors[@]}"}; do echo "::error title=Production::$message"; echo "- $message" >> "$GITHUB_STEP_SUMMARY"; done
+          (( ${#errors[@]} == 0 )) || { echo "Nothing was built or rolled out; see deploy/README.md, first deployment."; exit 1; }
+          echo "Settings of production are complete."
+
+  # The whole CI on the release's commit.
+  ci:
+    name: CI
+    needs: [prepare, settings]
+    if: needs.prepare.outputs.build == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and publish the GitHub release
+    needs: [prepare, settings, ci]
+    if: >-
+      always() && needs.prepare.result == 'success' && needs.settings.result == 'success'
+      && needs.prepare.outputs.build == 'true' && needs.ci.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SHA: ${{ needs.prepare.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      # The image ttkv-cloud:<version> for the server's linux/amd64, and the bundle: deploy/ as
+      # committed, plus deploy/VERSION.
+      - name: Build and package
+        run: |
+          out="$RUNNER_TEMP/release"
+          rm -rf "$out"
+          mkdir -p "$out"
+          docker build --platform linux/amd64 -t "ttkv-cloud:$VERSION" TtkvCloud/CloudServices
+          docker save "ttkv-cloud:$VERSION" | gzip > "$out/ttkv-cloud-image-$VERSION-linux-amd64.tar.gz"
+          git archive --format=tar.gz --add-virtual-file="deploy/VERSION:$VERSION" -o "$out/ttkv-cloud-deploy-$VERSION.tar.gz" HEAD deploy
+          (cd "$out" && sha256sum -- * > SHA256SUMS)
+      - name: Publish
+        run: gh release create "v$VERSION" "$RUNNER_TEMP"/release/* --target "$SHA" --title "$VERSION" --generate-notes --latest
+      # Only the newest five releases stay, by version, with their tags; GitVersion counts on from the
+      # newest tag, which stays. Housekeeping never stops the rollout; the next release tries again.
+      - name: Keep the newest five releases
+        continue-on-error: true
+        run: |
+          git ls-remote --tags --refs origin 'v*' | sed 's|.*refs/tags/||' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -r -V | tail -n +6 |
+            while IFS= read -r tag; do
+              if gh release view "$tag" >/dev/null 2>&1; then
+                gh release delete "$tag" --yes --cleanup-tag
+              else
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" >/dev/null
+              fi
+              echo "removed $tag"
+            done
+
+  rollout:
+    name: Roll out to production
+    needs: [prepare, settings, release]
+    if: >-
+      always() && needs.prepare.result == 'success' && needs.settings.result == 'success'
+      && (needs.release.result == 'success' || (needs.release.result == 'skipped' && needs.prepare.outputs.build == 'false'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+    steps:
+      # The release's own deploy/ (stage file, scripts), so a rollback rolls out the old version's too.
+      - name: Download the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rel="$RUNNER_TEMP/release"
+          rm -rf "$rel" "$RUNNER_TEMP/bundle"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$rel"
+          (cd "$rel" && sha256sum -c SHA256SUMS)
+          mkdir -p "$RUNNER_TEMP/bundle"
+          tar -xzf "$rel/ttkv-cloud-deploy-$VERSION.tar.gz" -C "$RUNNER_TEMP/bundle"
+          echo "PUBLIC_URL=$PUBLIC_URL" > "$rel/settings.env"
+          echo "DEPLOY_PATH=$(sed -n 's/^DEPLOY_PATH=//p' "$RUNNER_TEMP/bundle/deploy/stages/production.conf")" >> "$GITHUB_ENV"
+      # The workflow's own checkout holds the composite action (the release's bundle is the rollout's).
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/ssh-stage
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          user: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          port: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+      # The secrets travel only as a tar through SSH stdin, never in a command line.
+      - name: Copy to the server and roll out
+        env:
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          TERMINE_ADMIN_KEY: ${{ secrets.TERMINE_ADMIN_KEY }}
+        run: |
+          target="$DEPLOY_PATH/releases/$VERSION"
+          # shellcheck disable=SC2029 # the paths are meant to expand here, on the runner
+          ssh -F "$TTKV_SSH_CONFIG" stage "mkdir -p '$target'"
+          scp -F "$TTKV_SSH_CONFIG" -r -q "$RUNNER_TEMP"/release/* "stage:$target/"
+          secrets="$RUNNER_TEMP/secrets"
+          rm -rf "$secrets"
+          install -d -m 0700 "$secrets"
+          for name in CLOUDFLARE_TUNNEL_TOKEN TERMINE_ADMIN_KEY; do
+            (umask 077 && printf '%s' "${!name}" > "$secrets/$(tr '[:upper:]' '[:lower:]' <<<"$name")")
+          done
+          # shellcheck disable=SC2029
+          tar -C "$secrets" -cf - . |
+            ssh -F "$TTKV_SSH_CONFIG" stage "cd '$target' && tar -xzf 'ttkv-cloud-deploy-$VERSION.tar.gz' && ./deploy/scripts/rollout.sh production"
+          rm -rf "$secrets"
+      - name: Check production from outside
+        run: |
+          curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "$PUBLIC_URL/healthz" >/dev/null
+          echo "### Production runs $VERSION: $PUBLIC_URL" >> "$GITHUB_STEP_SUMMARY"

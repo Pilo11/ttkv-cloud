@@ -1,0 +1,84 @@
+name: CI
+
+# Every pull request; a merged pull request runs it again through the workflow Release, on the merge
+# commit, before it builds. A push to main alone runs nothing. GitHub's runners (the repository is
+# public, so they cost nothing).
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (.NET 10)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet build TtkvCloud/TtkvCloud.sln -c Release --nologo
+
+  # The production stack as the server starts it, without the tunnel: the image builds, runs as the
+  # runner's user with a read-only file system, reads the Staffelleitung key from its secret file and
+  # answers /healthz; a restart keeps the data.
+  stack:
+    name: Deployment stack (deploy/)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          for script in deploy/up.sh deploy/down.sh deploy/scripts/rollout.sh; do bash -n "$script"; done
+          echo "DATA_DIR=$RUNNER_TEMP/data" >> "$GITHUB_ENV"
+      - run: ./deploy/up.sh
+      - name: Check the running stack
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          base=http://127.0.0.1:18090
+          curl -fsS "$base/healthz" | grep -qx Healthy || fail "/healthz is not Healthy"
+          curl -fsS -o /dev/null "$base/" || fail "/ does not answer"
+          key="$(cat deploy/secrets/termine_admin_key)"
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/$key")" == 200 ]] || fail "the Staffelleitung does not answer under the key of secrets/termine_admin_key"
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/not-the-key-0123456789")" == 404 ]] || fail "the Staffelleitung answers under another key"
+          user="$(docker compose -f deploy/docker-compose.yml exec -T app id -u)"
+          [[ "$user" == "$(id -u)" ]] || fail "the app runs as $user, not as the deploy user $(id -u)"
+          ls -A "$DATA_DIR/dataprotection-keys" | grep -q . || fail "no data-protection key in DATA_DIR"
+      - name: Restart keeps the data
+        run: |
+          before="$(find "$DATA_DIR" -type f | sort | xargs sha256sum)"
+          ./deploy/down.sh
+          ./deploy/up.sh
+          after="$(find "$DATA_DIR" -type f | sort | xargs sha256sum)"
+          [[ "$before" == "$after" ]] || { echo "::error::a restart changed DATA_DIR"; exit 1; }
+      - name: Logs
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: ./deploy/down.sh
+
+  # The version Release would give this commit, with Release's own steps (.github/actions/release-version):
+  # an update that breaks GitVersion fails here, never first the release after the merge.
+  release-version:
+    name: Release version (GitVersion as Release runs it)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: version
+        uses: ./.github/actions/release-version
+      - env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "### Release version: merged into main, this commit would release $VERSION" >> "$GITHUB_STEP_SUMMARY"

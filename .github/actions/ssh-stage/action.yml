@@ -1,0 +1,43 @@
+# The SSH connection of the workflow Release to the server: the host alias `stage` with the
+# environment's key and known host, batch mode, strict host keys. The server holds no GitHub
+# credential; the workflow connects to it. Key, known host and config live in RUNNER_TEMP, never in
+# ~/.ssh: `ssh -F "$TTKV_SSH_CONFIG" stage`, `scp -F "$TTKV_SSH_CONFIG" … stage:…`.
+name: SSH to the stage's server
+description: Writes an SSH config with the host alias stage (key, known_hosts, port) into RUNNER_TEMP and exports its path as TTKV_SSH_CONFIG.
+inputs:
+  host:
+    description: The server's host name or IP (secret DEPLOY_SSH_HOST)
+    required: true
+  user:
+    description: The deploy user (secret DEPLOY_SSH_USER)
+    required: true
+  key:
+    description: The private key without passphrase (secret DEPLOY_SSH_KEY)
+    required: true
+  known-hosts:
+    description: The server's host key line (secret DEPLOY_SSH_KNOWN_HOSTS)
+    required: true
+  port:
+    description: The SSH port (variable DEPLOY_SSH_PORT)
+    required: false
+    default: "22"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SSH_HOST: ${{ inputs.host }}
+        SSH_USER: ${{ inputs.user }}
+        SSH_KEY: ${{ inputs.key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.known-hosts }}
+        SSH_PORT: ${{ inputs.port }}
+      run: |
+        dir="$RUNNER_TEMP/ssh"
+        rm -rf "$dir"
+        install -d -m 0700 "$dir"
+        (umask 077
+          printf '%s\n' "$SSH_KEY" > "$dir/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$dir/known_hosts"
+          printf 'Host stage\n  HostName %s\n  Port %s\n  User %s\n  IdentityFile "%s/key"\n  IdentitiesOnly yes\n  UserKnownHostsFile "%s/known_hosts"\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking yes\n  BatchMode yes\n  ServerAliveInterval 30\n' \
+            "$SSH_HOST" "$SSH_PORT" "$SSH_USER" "$dir" "$dir" > "$dir/config")
+        echo "TTKV_SSH_CONFIG=$dir/config" >> "$GITHUB_ENV"

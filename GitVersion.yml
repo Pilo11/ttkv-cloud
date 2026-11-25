@@ -1,0 +1,6 @@
+# GitVersion 7. A release from main is the last release tag v<x.y.z> plus one patch; "+semver: minor"
+# or "+semver: major" in a commit message since that tag bumps more. The first release is 1.0.0.
+# The steps are .github/actions/release-version, which CI runs on every pull request.
+workflow: GitHubFlow/v1
+calculation:
+  next-version: 1.0.0
