@@ -7,9 +7,9 @@
 #
 # 1. waits for the rollout lock, 2. refuses before anything changes (a pre-release, a missing secret,
 # the .env of another stack, the tunnel token of another stack on this host, a port another project
-# publishes), 3. loads the image, 4. stops the running version and copies DATA_DIR into
-# <DEPLOY_PATH>/backups/, 5. installs deploy/ (keeps secrets/), the secrets and .env, 6. ./up.sh,
-# 7. removes old images, releases and backups.
+# publishes, a DATA_DIR the rollout would delete), 3. loads the image, 4. stops the running version
+# and copies DATA_DIR into <DEPLOY_PATH>/backups/, 5. installs deploy/ (keeps secrets/), the secrets
+# and .env, 6. ./up.sh, 7. removes old images, releases and backups.
 # Never uses root and prints no container log: production data never reaches the Actions log.
 set -euo pipefail
 
@@ -53,6 +53,13 @@ done
 for key in COMPOSE_PROJECT_NAME DATA_DIR; do
   [[ ! -f "$live/.env" || "$(value "$key" "$live/.env")" == "$(value "$key" "$conf")" ]] ||
     errors+=("$live/.env has another $key than stage $stage: this folder belongs to another stack")
+done
+# Step 5 replaces deploy/ and step 7 prunes releases/ and backups/: data in there would be deleted.
+# A relative DATA_DIR would be resolved by Compose inside deploy/.
+[[ "$data_dir" == /* && "${data_dir%/}" != "${root%/}" ]] ||
+  errors+=("DATA_DIR ($data_dir) in deploy/stages/$stage.conf must be an absolute path other than DEPLOY_PATH")
+for pruned in "$live" "$root/releases" "$root/backups"; do
+  [[ "${data_dir%/}/" != "$pruned/"* ]] || errors+=("DATA_DIR ($data_dir) lies in $pruned, which every rollout replaces or prunes")
 done
 others="$(docker ps --filter "publish=$port" --format '{{.Label "com.docker.compose.project"}}|{{.Names}}' | grep -v "^$project|" | cut -d '|' -f 2 || true)"
 [[ -z "$others" ]] || errors+=("port $port is published by the container(s) $(tr '\n' ' ' <<<"$others"): set another HTTP_PORT in deploy/stages/$stage.conf")

@@ -49,16 +49,41 @@ jobs:
           key="$(cat deploy/secrets/termine_admin_key)"
           [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/$key")" == 200 ]] || fail "the Staffelleitung does not answer under the key of secrets/termine_admin_key"
           [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/not-the-key-0123456789")" == 404 ]] || fail "the Staffelleitung answers under another key"
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/$key/mytt")" == 200 ]] || fail "the myTT page does not answer under the key"
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/staffelleitung/not-the-key-0123456789/mytt")" == 404 ]] || fail "the myTT page answers under another key"
+          [[ "$(curl -s -o /dev/null -w '%{http_code}' "$base/mytt")" == 404 ]] || fail "the myTT page answers without the key"
+          [[ "$(curl -fsS "$base/")" != *mytt* ]] || fail "the public start page links to the myTT page"
           user="$(docker compose -f deploy/docker-compose.yml exec -T app id -u)"
           [[ "$user" == "$(id -u)" ]] || fail "the app runs as $user, not as the deploy user $(id -u)"
           ls -A "$DATA_DIR/dataprotection-keys" | grep -q . || fail "no data-protection key in DATA_DIR"
+      # A Spielplan created through the Staffelleitung survives `docker compose restart` and
+      # ./down.sh + ./up.sh (new containers), and DATA_DIR stays byte for byte the same.
       - name: Restart keeps the data
         run: |
-          before="$(find "$DATA_DIR" -type f | sort | xargs sha256sum)"
+          fail() { echo "::error::$*"; exit 1; }
+          base=http://127.0.0.1:18090
+          key="$(cat deploy/secrets/termine_admin_key)"
+          jar="$RUNNER_TEMP/cookies"
+          form="$(curl -fsS -c "$jar" "$base/staffelleitung/$key/neu")"
+          [[ "$form" =~ name=\"__RequestVerificationToken\"\ type=\"hidden\"\ value=\"([^\"]+)\" ]] || fail "no antiforgery token on the new Spielplan form"
+          [[ "$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' \
+            --data-urlencode "__RequestVerificationToken=${BASH_REMATCH[1]}" --data-urlencode "Name=CI Neustart" \
+            --data-urlencode "DateFrom=2027-01-11" --data-urlencode "DateTo=2027-01-24" \
+            "$base/staffelleitung/$key/neu?handler=Create")" == 302 ]] || fail "creating a Spielplan failed"
+          listed() { [[ "$(curl -fsS "$base/staffelleitung/$key")" == *"CI Neustart"* ]]; }
+          snapshot() { find "$DATA_DIR" -type f | sort | xargs sha256sum; }
+          listed || fail "the new Spielplan is not listed"
+          [[ -n "$(find "$DATA_DIR/cache/termine" -name '*.json' ! -name tenants-index.json)" ]] || fail "the Spielplan is not in DATA_DIR"
+          before="$(snapshot)"
+
+          docker compose -f deploy/docker-compose.yml restart
+          for _ in $(seq 60); do curl -fsS -o /dev/null "$base/healthz" 2>/dev/null && break; sleep 2; done
+          listed || fail "docker compose restart lost the Spielplan"
+
           ./deploy/down.sh
           ./deploy/up.sh
-          after="$(find "$DATA_DIR" -type f | sort | xargs sha256sum)"
-          [[ "$before" == "$after" ]] || { echo "::error::a restart changed DATA_DIR"; exit 1; }
+          listed || fail "./down.sh + ./up.sh lost the Spielplan"
+          [[ "$before" == "$(snapshot)" ]] || fail "a restart changed DATA_DIR"
       - name: Logs
         if: failure()
         run: docker compose -f deploy/docker-compose.yml logs --no-color
