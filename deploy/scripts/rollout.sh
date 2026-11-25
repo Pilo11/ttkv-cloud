@@ -7,9 +7,9 @@
 #
 # 1. waits for the rollout lock, 2. refuses before anything changes (a pre-release, a missing secret,
 # the .env of another stack, the tunnel token of another stack on this host, a port another project
-# publishes, a DATA_DIR the rollout would delete), 3. loads the image, 4. stops the running version
-# and copies DATA_DIR into <DEPLOY_PATH>/backups/, 5. installs deploy/ (keeps secrets/), the secrets
-# and .env, 6. ./up.sh, 7. removes old images, releases and backups.
+# publishes, a DATA_DIR the rollout would delete), 3. loads the image, 4. stops the running version,
+# 5. installs deploy/ (keeps secrets/), the secrets and .env, 6. ./up.sh, 7. removes old images and
+# releases. DATA_DIR is never touched.
 # Never uses root and prints no container log: production data never reaches the Actions log.
 set -euo pipefail
 
@@ -54,11 +54,11 @@ for key in COMPOSE_PROJECT_NAME DATA_DIR; do
   [[ ! -f "$live/.env" || "$(value "$key" "$live/.env")" == "$(value "$key" "$conf")" ]] ||
     errors+=("$live/.env has another $key than stage $stage: this folder belongs to another stack")
 done
-# Step 5 replaces deploy/ and step 7 prunes releases/ and backups/: data in there would be deleted.
+# Step 5 replaces deploy/ and step 7 prunes releases/: data in there would be deleted.
 # A relative DATA_DIR would be resolved by Compose inside deploy/.
 [[ "$data_dir" == /* && "${data_dir%/}" != "${root%/}" ]] ||
   errors+=("DATA_DIR ($data_dir) in deploy/stages/$stage.conf must be an absolute path other than DEPLOY_PATH")
-for pruned in "$live" "$root/releases" "$root/backups"; do
+for pruned in "$live" "$root/releases"; do
   [[ "${data_dir%/}/" != "$pruned/"* ]] || errors+=("DATA_DIR ($data_dir) lies in $pruned, which every rollout replaces or prunes")
 done
 others="$(docker ps --filter "publish=$port" --format '{{.Label "com.docker.compose.project"}}|{{.Names}}' | grep -v "^$project|" | cut -d '|' -f 2 || true)"
@@ -83,13 +83,6 @@ if [[ -x "$live/down.sh" ]]; then
   step "stop ${previous:-the running version}"
   "$live/down.sh"
 fi
-if [[ -d "$data_dir" ]]; then
-  step "copy the data of ${previous:-the running version} into $root/backups"
-  backup="$root/backups/$(date -u +%Y%m%dT%H%M%SZ)-${previous:-unknown}.tar.gz"
-  (umask 077 && mkdir -p "$root/backups" && tar -czf "$backup" -C "$data_dir" .)
-  echo "$backup"
-fi
-
 step "install $version"
 mkdir -p "$live"
 find "$live" -mindepth 1 -maxdepth 1 ! -name secrets -exec rm -rf {} +
@@ -111,7 +104,7 @@ step "start $version"
 if ! (cd "$live" && ./up.sh); then
   echo "error: the start failed. Container states (the logs stay on the host: cd $live && docker compose logs):" >&2
   (cd "$live" && docker compose ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}') >&2 || true
-  echo "Roll back: run the workflow Release by hand with ${previous:-the previous version}; the data before this rollout is in $root/backups." >&2
+  echo "Roll back: run the workflow Release by hand with ${previous:-the previous version}." >&2
   exit 1
 fi
 
@@ -122,5 +115,4 @@ docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^ttkv-cloud:' | w
 done || true
 docker image prune -f >/dev/null
 ls -1dt "$root/releases"/*/ 2>/dev/null | tail -n +4 | while IFS= read -r old; do rm -rf "$old"; done || true
-ls -1t "$root/backups"/*.tar.gz 2>/dev/null | tail -n +11 | while IFS= read -r old; do rm -f "$old"; done || true
 step "stage $stage runs $version"
