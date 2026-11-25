@@ -13,7 +13,7 @@ The root `docker-compose.yml` is the local quick start. This folder is the produ
   These are bind mounts of host directories, not Docker volumes: `docker compose restart`,
   `./down.sh` + `./up.sh`, even `docker compose down -v` or `docker volume prune` leave them alone,
   and the read-only container has nowhere else to keep anything. The rollout refuses a `DATA_DIR`
-  inside `deploy/`, `releases/` or `backups/`, which it replaces or prunes.
+  inside `deploy/` or `releases/`, which it replaces or prunes.
 - **Releases**: only a pull request merged into `main` releases. The workflow `Merged` starts
   `Release`, which runs the CI on the merge commit, builds the image `ttkv-cloud:<version>`, keeps it
   in a GitHub release (no registry), copies it over SSH to the server and runs
@@ -23,7 +23,7 @@ The root `docker-compose.yml` is the local quick start. This folder is the produ
 | --- | --- |
 | `./up.sh` | Every start. A checkout builds the image and generates a missing key; a release bundle starts its loaded image |
 | `./down.sh` | Stops; `DATA_DIR` and `secrets/` stay |
-| `scripts/rollout.sh production` | Run by the workflow on the server: guards, load, stop, back up `DATA_DIR`, install, start, clean up |
+| `scripts/rollout.sh production` | Run by the workflow on the server: guards, load, stop, install, start, clean up |
 
 Values of the stack on the server (path, project, port) are code in `stages/production.conf`.
 
@@ -130,7 +130,7 @@ listing what is missing or malformed (never a value).
 ### 6. First release
 
 Merge a pull request into `main`: `v1.0.0`. The first rollout creates `/home/server/ttkv-cloud`
-(`deploy/`, `data/`, `releases/`, `backups/`), writes the secrets and `.env` and starts the stack.
+(`deploy/`, `data/`, `releases/`), writes the secrets and `.env` and starts the stack.
 Then check `https://<host>/`, the Staffelleitung URL (its menu also leads to the myTT-Verwaltung,
 `/staffelleitung/<key>/mytt`), and that a copied Mannschaftsführer link starts with `https://`.
 
@@ -146,17 +146,6 @@ Then check `https://<host>/`, the Staffelleitung URL (its menu also leads to the
 
 A rollout waits for the server's rollout lock, refuses before anything changes (a pre-release, a
 missing secret, another stack's folder or tunnel token, a port another container publishes), loads
-the image, stops the stack, copies `DATA_DIR` into `/home/server/ttkv-cloud/backups/` (the newest
-ten stay), installs the release with its `.env`, starts it and removes old images. A failed start
-prints the container states only; the logs stay on the server
-(`cd ~/ttkv-cloud/deploy && docker compose logs`).
-
-## Backups
-
-`DATA_DIR` holds all data; every rollout copies it into `backups/`. For more, on the server:
-
-```bash
-tar -czf ttkv-termine-$(date +%F).tar.gz -C ~/ttkv-cloud/data .
-```
-
-Restore: `./down.sh`, unpack into `~/ttkv-cloud/data`, `./up.sh` (in `~/ttkv-cloud/deploy`).
+the image, stops the stack, installs the release with its `.env`, starts it and removes old images.
+It never touches `DATA_DIR` and makes no backups. A failed start prints the container states only;
+the logs stay on the server (`cd ~/ttkv-cloud/deploy && docker compose logs`).
