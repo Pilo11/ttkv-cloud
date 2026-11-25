@@ -301,7 +301,14 @@ internal static class ClickTtProxyTransforms
     private static string RewriteReferer(Uri refererUri, ProxyUpstream current)
     {
         var path = refererUri.AbsolutePath;
-        var refererUpstream = ProxyUpstream.FromPath(path) ?? current;
+        var refererUpstream = ProxyUpstream.FromPath(path);
+        if (refererUpstream is null)
+        {
+            // One of this app's own pages, e.g. the myTT page under the secret Staffelleitung path:
+            // its path and query never go upstream.
+            return current.OriginHttps + "/";
+        }
+
         if (path.StartsWith(refererUpstream.PathPrefix, StringComparison.OrdinalIgnoreCase))
         {
             path = path[refererUpstream.PathPrefix.Length..];

@@ -10,6 +10,10 @@ The root `docker-compose.yml` is the local quick start. This folder is the produ
   On the server the rollout writes them from the GitHub environment `production`.
 - **All data lives in `DATA_DIR`** (`/home/server/ttkv-cloud/data`): the Spielpläne (`cache/termine`)
   and the data-protection keys. The app runs as the deploy user, never root, read-only otherwise.
+  These are bind mounts of host directories, not Docker volumes: `docker compose restart`,
+  `./down.sh` + `./up.sh`, even `docker compose down -v` or `docker volume prune` leave them alone,
+  and the read-only container has nowhere else to keep anything. The rollout refuses a `DATA_DIR`
+  inside `deploy/`, `releases/` or `backups/`, which it replaces or prunes.
 - **Releases**: only a pull request merged into `main` releases. The workflow `Merged` starts
   `Release`, which runs the CI on the merge commit, builds the image `ttkv-cloud:<version>`, keeps it
   in a GitHub release (no registry), copies it over SSH to the server and runs
@@ -127,8 +131,8 @@ listing what is missing or malformed (never a value).
 
 Merge a pull request into `main`: `v1.0.0`. The first rollout creates `/home/server/ttkv-cloud`
 (`deploy/`, `data/`, `releases/`, `backups/`), writes the secrets and `.env` and starts the stack.
-Then check `https://<host>/`, the Staffelleitung URL, and that a copied Mannschaftsführer link
-starts with `https://`.
+Then check `https://<host>/`, the Staffelleitung URL (its menu also leads to the myTT-Verwaltung,
+`/staffelleitung/<key>/mytt`), and that a copied Mannschaftsführer link starts with `https://`.
 
 ## Releases, day to day
 

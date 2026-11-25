@@ -2183,7 +2183,8 @@ a.app-plan-name:hover {
 
     .app-nav-links {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-auto-columns: 1fr;
+        grid-auto-flow: column;
         gap: 0.25rem;
     }
 
