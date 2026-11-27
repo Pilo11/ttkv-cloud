@@ -12,7 +12,8 @@
     var isHome = string.Equals(path, "/", StringComparison.Ordinal);
     var isTermine = string.Equals(path, "/termine", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/termine/", StringComparison.OrdinalIgnoreCase);
-    var isStaffelleitung = page is "/Appointment/TerminGenerator" or "/Appointment/TermineAdmin";
+    var isEingabe = page == "/Appointment/Termineingabe";
+    var isStaffelleitung = page is "/Appointment/TerminGenerator" or "/Appointment/TermineAdmin" or "/Appointment/TermineingabeAdmin";
     var isMyTt = page == "/MyTt/Index";
 
     // The Staffelleitung and myTT links carry the secret key: only on pages already under that key.
@@ -28,6 +29,10 @@
         <a href="@Url.Page("/Appointment/Termine")" class="app-nav-link" aria-current="@(isTermine ? "page" : null)">
             <partial name="_TermineNavIcon" />
             <span class="app-nav-label">Terminplanung</span><span class="app-nav-label-short">Termine</span>
+        </a>
+        <a href="@Url.Page("/Appointment/Termineingabe", new { id = (string?)null })" class="app-nav-link" aria-current="@(isEingabe ? "page" : null)">
+            <partial name="_Icon" model="@("list-edit")" />
+            <span class="app-nav-label">Termineingabe</span><span class="app-nav-label-short">Eingabe</span>
         </a>
         @if (showSecret)
         {

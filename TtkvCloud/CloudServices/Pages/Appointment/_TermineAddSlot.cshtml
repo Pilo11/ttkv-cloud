@@ -1,0 +1,8 @@
+@model (string Date, string DateLabel)
+@* "+" on the last slot of an own cell: offer one more home Termin that day at the toolbar time (at least 4 hours from the others). *@
+<button type="submit" class="app-tool"
+        asp-page-handler="Offer" name="PlusDate" value="@Model.Date"
+        title="@($"Weiteren Heimtermin am {Model.DateLabel} anbieten (Uhrzeit oben, mindestens {TermineRules.MinHoursBetweenMatches} Stunden Abstand)")"
+        aria-label="@($"Weiteren Heimtermin am {Model.DateLabel} anbieten")">
+    <partial name="_Icon" model="@("plus")" />
+</button>

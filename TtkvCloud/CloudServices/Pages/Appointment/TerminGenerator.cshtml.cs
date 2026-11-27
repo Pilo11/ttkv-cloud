@@ -77,6 +77,9 @@ public class TerminGeneratorModel : PageModel
     public string PublicUrl(string id) =>
         Url.PageLink("/Appointment/Termine", values: new { id }) ?? "";
 
+    public string EingabeUrl(string id) =>
+        Url.PageLink("/Appointment/Termineingabe", values: new { id }) ?? "";
+
     public override async Task OnPageHandlerExecutionAsync(
         PageHandlerExecutingContext context,
         PageHandlerExecutionDelegate next)

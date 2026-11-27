@@ -10,7 +10,6 @@ namespace CloudServices.Pages.Appointment;
 /// </summary>
 public class TermineModel : PageModel
 {
-    public const string ClubCookie = "ttkv-club";
     public const string StatusKey = "TermineStatus";
     public const string ErrorKey = "TermineError";
 
@@ -96,7 +95,7 @@ public class TermineModel : PageModel
             return RedirectToPage("/Appointment/Termine");
         }
 
-        SetClubCookie(ActingClubId);
+        TermineClubCookie.Write(Response, ActingClubId);
         return RedirectToPage("/Appointment/Termine", new { id = Id });
     }
 
@@ -107,7 +106,7 @@ public class TermineModel : PageModel
             return RedirectToPage("/Appointment/Termine");
         }
 
-        var clubId = Request.Cookies[ClubCookie];
+        var clubId = TermineClubCookie.Read(Request);
         var dates = new HashSet<string>(SelectedDates ?? [], StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(PlusDate))
         {
@@ -134,14 +133,14 @@ public class TermineModel : PageModel
             return RedirectToPage("/Appointment/Termine");
         }
 
-        var clubId = Request.Cookies[ClubCookie];
-        if (string.IsNullOrWhiteSpace(clubId) || !TrySplitKey(BookKey, out var homeClubId, out var date))
+        var clubId = TermineClubCookie.Read(Request);
+        if (string.IsNullOrWhiteSpace(clubId) || !TrySplitKey(BookKey, out var homeClubId, out var date, out var time))
         {
             TempData[ErrorKey] = "Bitte zuerst Ihre Mannschaft wählen.";
             return RedirectToPage("/Appointment/Termine", new { id = Id });
         }
 
-        var result = await _store.BookGuestAsync(Id, homeClubId, date, clubId, cancellationToken).ConfigureAwait(false);
+        var result = await _store.BookGuestAsync(Id, homeClubId, date, time, clubId, cancellationToken).ConfigureAwait(false);
         TempData[result.Ok ? StatusKey : ErrorKey] = result.Ok
             ? "Termin am " + TermineDates.FormatWithWeekday(date) + " wurde verbindlich gebucht."
             : result.Error;
@@ -155,8 +154,8 @@ public class TermineModel : PageModel
             return RedirectToPage("/Appointment/Termine");
         }
 
-        var clubId = Request.Cookies[ClubCookie];
-        if (string.IsNullOrWhiteSpace(clubId) || !TrySplitKey(WithdrawKey, out var homeClubId, out var date))
+        var clubId = TermineClubCookie.Read(Request);
+        if (string.IsNullOrWhiteSpace(clubId) || !TrySplitKey(WithdrawKey, out var homeClubId, out var date, out var time))
         {
             return RedirectToPage("/Appointment/Termine", new { id = Id });
         }
@@ -167,7 +166,7 @@ public class TermineModel : PageModel
             return RedirectToPage("/Appointment/Termine", new { id = Id });
         }
 
-        var result = await _store.WithdrawOfferAsync(Id, homeClubId, date, cancellationToken).ConfigureAwait(false);
+        var result = await _store.WithdrawOfferAsync(Id, homeClubId, date, time, cancellationToken).ConfigureAwait(false);
         TempData[result.Ok ? StatusKey : ErrorKey] = result.Ok
             ? "Terminvorschlag wurde zurückgezogen."
             : result.Error;
@@ -183,7 +182,7 @@ public class TermineModel : PageModel
         }
 
         ActingClubOptions = TermineRules.ActingClubs(Tenant);
-        var cookieClub = Request.Cookies[ClubCookie];
+        var cookieClub = TermineClubCookie.Read(Request);
         SelectedClubId = ActingClubOptions.Any(club =>
             string.Equals(club.Id, cookieClub, StringComparison.OrdinalIgnoreCase))
             ? cookieClub
@@ -214,49 +213,32 @@ public class TermineModel : PageModel
         return true;
     }
 
-    private void SetClubCookie(string? clubId)
-    {
-        var options = new CookieOptions
-        {
-            Path = "/",
-            HttpOnly = true,
-            IsEssential = true,
-            SameSite = SameSiteMode.Lax,
-            MaxAge = TimeSpan.FromDays(365)
-        };
-
-        if (string.IsNullOrWhiteSpace(clubId))
-        {
-            Response.Cookies.Delete(ClubCookie, options);
-            return;
-        }
-
-        Response.Cookies.Append(ClubCookie, clubId, options);
-    }
-
     private void ReadFlash()
     {
         StatusMessage = TempData[StatusKey] as string;
         ErrorMessage = TempData[ErrorKey] as string;
     }
 
-    private static bool TrySplitKey(string? key, out string homeClubId, out string date)
+    /// <summary>"home|date|time" of a slot (a home team can have several per day); the time is optional.</summary>
+    private static bool TrySplitKey(string? key, out string homeClubId, out string date, out string? time)
     {
         homeClubId = "";
         date = "";
+        time = null;
         if (string.IsNullOrWhiteSpace(key))
         {
             return false;
         }
 
-        var parts = key.Split('|', 2);
-        if (parts.Length != 2)
+        var parts = key.Split('|', 3);
+        if (parts.Length < 2)
         {
             return false;
         }
 
         homeClubId = parts[0];
         date = parts[1];
+        time = parts.Length == 3 && parts[2].Length > 0 ? parts[2] : null;
         return homeClubId.Length > 0 && date.Length > 0;
     }
 }

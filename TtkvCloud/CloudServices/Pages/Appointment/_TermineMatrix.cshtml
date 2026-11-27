@@ -91,112 +91,127 @@ else
                                 @foreach (var home in columns)
                                 {
                                     var own = Model.IsOwnColumn(home.Id);
-                                    var slot = Model.Slot(home.Id, date);
-                                    var key = home.Id + "|" + date;
+                                    // The home team's slots that day by time: several possible, at least 4 hours apart.
+                                    var cellSlots = Model.Slots(home.Id, date);
+                                    var canAdd = own && Model.CanOffer;
                                     <td data-own="@(own ? "true" : null)">
                                         <div class="app-cell">
-                                            @if (slot is null)
+                                            @if (cellSlots.Count == 0 && canAdd)
                                             {
-                                                if (own && Model.CanOffer)
-                                                {
-                                                    <label class="app-pick" title="@($"{dateLabel} auswählen")">
-                                                        <input type="checkbox" name="SelectedDates" value="@date" aria-label="@($"{dateLabel} auswählen")" />
-                                                        <span class="app-pick-text when-off">auswählen</span>
-                                                        <span class="app-pick-text when-on">ausgewählt</span>
-                                                    </label>
-                                                    <button type="submit"
-                                                            class="app-plus"
-                                                            asp-page-handler="Offer"
-                                                            name="PlusDate"
-                                                            value="@date"
-                                                            title="@($"Heimtermin am {dateLabel} anbieten")"
-                                                            aria-label="@($"Heimtermin am {dateLabel} anbieten")">+</button>
-                                                }
+                                                <label class="app-pick" title="@($"{dateLabel} auswählen")">
+                                                    <input type="checkbox" name="SelectedDates" value="@date" aria-label="@($"{dateLabel} auswählen")" />
+                                                    <span class="app-pick-text when-off">auswählen</span>
+                                                    <span class="app-pick-text when-on">ausgewählt</span>
+                                                </label>
+                                                <button type="submit"
+                                                        class="app-plus"
+                                                        asp-page-handler="Offer"
+                                                        name="PlusDate"
+                                                        value="@date"
+                                                        title="@($"Heimtermin am {dateLabel} anbieten")"
+                                                        aria-label="@($"Heimtermin am {dateLabel} anbieten")">+</button>
                                             }
-                                            else if (string.IsNullOrEmpty(slot.GuestClubId))
+                                            @for (var index = 0; index < cellSlots.Count; index++)
                                             {
-                                                if (!Model.IsAdmin && !own && Model.CanBookCell(home.Id, date))
+                                                var slot = cellSlots[index];
+                                                var key = home.Id + "|" + date + "|" + slot.Time;
+                                                // One "+" per cell, on its last slot: another home Termin that day (time from the toolbar).
+                                                var addHere = canAdd && index == cellSlots.Count - 1;
+                                                if (string.IsNullOrEmpty(slot.GuestClubId))
                                                 {
-                                                    <button type="submit"
-                                                            class="app-slot"
-                                                            data-state="bookable"
-                                                            asp-page-handler="Book"
-                                                            name="BookKey"
-                                                            value="@key"
-                                                            title="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr buchen")"
-                                                            data-confirm="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr verbindlich buchen?\n\nDanach kann nur die Staffelleitung den Termin wieder freigeben.")"
-                                                            onclick="return confirm(this.dataset.confirm);">
-                                                        <span class="app-slot-time">@slot.Time</span>
-                                                        <span class="app-slot-sub">Buchen</span>
-                                                    </button>
+                                                    if (!Model.IsAdmin && !own && Model.CanBookSlot(slot))
+                                                    {
+                                                        <button type="submit"
+                                                                class="app-slot"
+                                                                data-state="bookable"
+                                                                asp-page-handler="Book"
+                                                                name="BookKey"
+                                                                value="@key"
+                                                                title="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr buchen")"
+                                                                data-confirm="@($"Termin bei {home.Name} am {dateLabel} um {slot.Time} Uhr verbindlich buchen?\n\nDanach kann nur die Staffelleitung den Termin wieder freigeben.")"
+                                                                onclick="return confirm(this.dataset.confirm);">
+                                                            <span class="app-slot-time">@slot.Time</span>
+                                                            <span class="app-slot-sub">Buchen</span>
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="app-slot" data-state="offer" title="@($"Terminvorschlag {home.Name}, {dateLabel} {slot.Time} Uhr – frei")">
+                                                            <span class="app-slot-head">
+                                                                <span class="app-slot-time">@slot.Time</span>
+                                                                @if (Model.IsAdmin)
+                                                                {
+                                                                    <span class="app-slot-tools">
+                                                                        <button type="submit" class="app-tool app-tool-danger"
+                                                                                asp-page-handler="DeleteSlot" name="SlotKey" value="@key"
+                                                                                title="Terminvorschlag löschen" aria-label="@($"Terminvorschlag {home.Name} am {dateLabel} um {slot.Time} Uhr löschen")"
+                                                                                data-confirm="@($"Terminvorschlag von {home.Name} am {dateLabel} um {slot.Time} Uhr löschen?")"
+                                                                                onclick="return confirm(this.dataset.confirm);">
+                                                                            <partial name="_Icon" model="@("trash")" />
+                                                                        </button>
+                                                                    </span>
+                                                                }
+                                                                else if (own)
+                                                                {
+                                                                    <span class="app-slot-tools">
+                                                                        @if (addHere)
+                                                                        {
+                                                                            <partial name="_TermineAddSlot" model="@(date, dateLabel)" />
+                                                                        }
+                                                                        <button type="submit" class="app-tool"
+                                                                                asp-page-handler="Withdraw" name="WithdrawKey" value="@key"
+                                                                                title="Terminvorschlag zurückziehen" aria-label="@($"Terminvorschlag am {dateLabel} um {slot.Time} Uhr zurückziehen")">
+                                                                            <partial name="_Icon" model="@("x")" />
+                                                                        </button>
+                                                                    </span>
+                                                                }
+                                                            </span>
+                                                            <span class="app-slot-sub">frei</span>
+                                                        </div>
+                                                        if (!Model.IsAdmin && !own && Model.BookBlockReason(slot) is { } reason)
+                                                        {
+                                                            <span class="app-slot-note" title="@reason">@reason</span>
+                                                        }
+                                                    }
                                                 }
                                                 else
                                                 {
-                                                    <div class="app-slot" data-state="offer" title="@($"Terminvorschlag {home.Name}, {dateLabel} {slot.Time} Uhr – frei")">
+                                                    var match = TermineRules.FindMatch(Model.Tenant, slot.MatchId);
+                                                    var number = match is not null && !string.IsNullOrEmpty(match.Location) ? " · Nr " + match.Location : "";
+                                                    var guest = Model.ClubName(slot.GuestClubId);
+                                                    <div class="app-slot" data-state="booked" data-mine="@(Model.IsMine(slot) ? "true" : null)"
+                                                         title="@($"{home.Name} – {guest}{number}, {dateLabel} {slot.Time} Uhr")">
                                                         <span class="app-slot-head">
                                                             <span class="app-slot-time">@slot.Time</span>
                                                             @if (Model.IsAdmin)
                                                             {
                                                                 <span class="app-slot-tools">
+                                                                    <button type="submit" class="app-tool"
+                                                                            asp-page-handler="Release" name="SlotKey" value="@key"
+                                                                            title="Buchung aufheben (Vorschlag bleibt)" aria-label="@($"Buchung {home.Name} – {guest} am {dateLabel} aufheben")"
+                                                                            data-confirm="@($"Buchung von {guest} bei {home.Name} am {dateLabel} um {slot.Time} Uhr aufheben?\n\nDer Terminvorschlag bleibt bestehen und ist wieder frei.")"
+                                                                            onclick="return confirm(this.dataset.confirm);">
+                                                                        <partial name="_Icon" model="@("undo")" />
+                                                                    </button>
                                                                     <button type="submit" class="app-tool app-tool-danger"
                                                                             asp-page-handler="DeleteSlot" name="SlotKey" value="@key"
-                                                                            title="Terminvorschlag löschen" aria-label="@($"Terminvorschlag {home.Name} am {dateLabel} löschen")"
-                                                                            data-confirm="@($"Terminvorschlag von {home.Name} am {dateLabel} um {slot.Time} Uhr löschen?")"
+                                                                            title="Termin löschen" aria-label="@($"Termin {home.Name} – {guest} am {dateLabel} löschen")"
+                                                                            data-confirm="@($"Termin {home.Name} – {guest} am {dateLabel} um {slot.Time} Uhr komplett löschen?")"
                                                                             onclick="return confirm(this.dataset.confirm);">
                                                                         <partial name="_Icon" model="@("trash")" />
                                                                     </button>
                                                                 </span>
                                                             }
-                                                            else if (own)
+                                                            else if (addHere)
                                                             {
                                                                 <span class="app-slot-tools">
-                                                                    <button type="submit" class="app-tool"
-                                                                            asp-page-handler="Withdraw" name="WithdrawKey" value="@key"
-                                                                            title="Terminvorschlag zurückziehen" aria-label="@($"Terminvorschlag am {dateLabel} zurückziehen")">
-                                                                        <partial name="_Icon" model="@("x")" />
-                                                                    </button>
+                                                                    <partial name="_TermineAddSlot" model="@(date, dateLabel)" />
                                                                 </span>
                                                             }
                                                         </span>
-                                                        <span class="app-slot-sub">frei</span>
+                                                        <span class="app-slot-sub">@guest@number</span>
                                                     </div>
-                                                    if (!Model.IsAdmin && !own && Model.BookBlockReason(home.Id, date) is { } reason)
-                                                    {
-                                                        <span class="app-slot-note" title="@reason">@reason</span>
-                                                    }
                                                 }
-                                            }
-                                            else
-                                            {
-                                                var match = TermineRules.FindMatch(Model.Tenant, slot.MatchId);
-                                                var number = match is not null && !string.IsNullOrEmpty(match.Location) ? " · Nr " + match.Location : "";
-                                                var guest = Model.ClubName(slot.GuestClubId);
-                                                <div class="app-slot" data-state="booked" data-mine="@(Model.IsMine(slot) ? "true" : null)"
-                                                     title="@($"{home.Name} – {guest}{number}, {dateLabel} {slot.Time} Uhr")">
-                                                    <span class="app-slot-head">
-                                                        <span class="app-slot-time">@slot.Time</span>
-                                                        @if (Model.IsAdmin)
-                                                        {
-                                                            <span class="app-slot-tools">
-                                                                <button type="submit" class="app-tool"
-                                                                        asp-page-handler="Release" name="SlotKey" value="@key"
-                                                                        title="Buchung aufheben (Vorschlag bleibt)" aria-label="@($"Buchung {home.Name} – {guest} am {dateLabel} aufheben")"
-                                                                        data-confirm="@($"Buchung von {guest} bei {home.Name} am {dateLabel} aufheben?\n\nDer Terminvorschlag bleibt bestehen und ist wieder frei.")"
-                                                                        onclick="return confirm(this.dataset.confirm);">
-                                                                    <partial name="_Icon" model="@("undo")" />
-                                                                </button>
-                                                                <button type="submit" class="app-tool app-tool-danger"
-                                                                        asp-page-handler="DeleteSlot" name="SlotKey" value="@key"
-                                                                        title="Termin löschen" aria-label="@($"Termin {home.Name} – {guest} am {dateLabel} löschen")"
-                                                                        data-confirm="@($"Termin {home.Name} – {guest} am {dateLabel} komplett löschen?")"
-                                                                        onclick="return confirm(this.dataset.confirm);">
-                                                                    <partial name="_Icon" model="@("trash")" />
-                                                                </button>
-                                                            </span>
-                                                        }
-                                                    </span>
-                                                    <span class="app-slot-sub">@guest@number</span>
-                                                </div>
                                             }
                                         </div>
                                     </td>

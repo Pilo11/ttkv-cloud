@@ -111,17 +111,32 @@
         @if (Model.IsEdit)
         {
             var publicUrl = Model.PublicUrl(Model.Id!);
+            var eingabeUrl = Model.EingabeUrl(Model.Id!);
             <section class="app-card app-share">
                 <div class="app-card-body">
                     <div class="app-share-text">
-                        <h2>Link für die Mannschaftsführer</h2>
-                        <p>Über diesen Link bieten die Mannschaften Heimtermine an und buchen Auswärtstermine.</p>
+                        <h2>Links für die Mannschaftsführer</h2>
+                        <p>Beide zeigen denselben Spielplan: In der Terminplanung bieten die Mannschaften Heimtermine an und buchen Auswärtstermine, in der Termineingabe tragen sie Datum und Uhrzeit direkt ein.</p>
                     </div>
-                    <div class="app-share-link">
-                        <input class="app-input" type="text" value="@publicUrl" readonly aria-label="Öffentlicher Link" onfocus="this.select()" />
-                        <button type="button" class="app-btn app-btn-soft" data-copy="@publicUrl">
-                            <partial name="_Icon" model="@("copy")" /> <span data-copy-label>Kopieren</span>
-                        </button>
+                    <div class="app-share-links">
+                        <div class="app-share-row">
+                            <span class="app-label">Terminplanung</span>
+                            <div class="app-share-link">
+                                <input class="app-input" type="text" value="@publicUrl" readonly aria-label="Öffentlicher Link zur Terminplanung" onfocus="this.select()" />
+                                <button type="button" class="app-btn app-btn-soft" data-copy="@publicUrl">
+                                    <partial name="_Icon" model="@("copy")" /> <span data-copy-label>Kopieren</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="app-share-row">
+                            <span class="app-label">Termineingabe</span>
+                            <div class="app-share-link">
+                                <input class="app-input" type="text" value="@eingabeUrl" readonly aria-label="Öffentlicher Link zur Termineingabe" onfocus="this.select()" />
+                                <button type="button" class="app-btn app-btn-soft" data-copy="@eingabeUrl">
+                                    <partial name="_Icon" model="@("copy")" /> <span data-copy-label>Kopieren</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

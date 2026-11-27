@@ -1,0 +1,91 @@
+@page "/termineingabe/{id?}"
+@model TermineingabeModel
+@{
+    ViewData["Title"] = Model.Tenant?.Name ?? "Termineingabe";
+}
+
+@if (Model.Tenant is null)
+{
+    <div class="app-container app-container-narrow">
+        <header class="app-page-header">
+            <div class="app-page-header-text">
+                <h1>Termineingabe</h1>
+                <p class="app-lead">Wählen Sie den Spielplan Ihrer Staffel. Dort tragen Sie Datum und Uhrzeit Ihrer Begegnungen direkt in die Liste ein.</p>
+            </div>
+        </header>
+
+        <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+
+        <partial name="_PlanList" model="@(new PlanList(Model.Plans, "/Appointment/Termineingabe"))" />
+    </div>
+}
+else
+{
+    var tenant = Model.Tenant;
+    var summary = Model.Summary!;
+    <div class="app-termine-shell">
+        <div class="app-termine-head">
+            <div class="app-termine-title">
+                <div>
+                    <nav class="app-breadcrumb" aria-label="Pfad">
+                        <a href="@Url.Page("/Appointment/Termineingabe", new { id = (string?)null })">Termineingabe</a>
+                    </nav>
+                    <h1>@tenant.Name</h1>
+                </div>
+                <div class="app-termine-progress">
+                    <div class="app-progress" role="presentation"><span data-count-bar style="width: @(summary.ScheduledPercent)%"></span></div>
+                    <span class="app-stats"><span><strong data-count-done>@summary.ScheduledCount</strong> von @summary.MatchCount Begegnungen terminiert</span></span>
+                </div>
+            </div>
+
+            <div class="app-termine-bar" data-needs-team="@(Model.SelectedClubId is null ? "true" : null)">
+                <form method="post" asp-page-handler="SetClub" class="app-field">
+                    <label for="ActingClubId">Ihre Mannschaft</label>
+                    <select id="ActingClubId" class="app-select" name="ActingClubId" onchange="this.form.submit()">
+                        <option value="">Bitte wählen …</option>
+                        @foreach (var club in Model.ActingClubOptions)
+                        {
+                            if (string.Equals(club.Id, Model.SelectedClubId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="@club.Id" selected>@club.Name</option>
+                            }
+                            else
+                            {
+                                <option value="@club.Id">@club.Name</option>
+                            }
+                        }
+                    </select>
+                    <noscript><button type="submit" class="app-btn app-btn-sm">Übernehmen</button></noscript>
+                </form>
+
+                @if (Model.SelectedClubId is null)
+                {
+                    <p class="app-hint app-team-hint">
+                        Wählen Sie zuerst Ihre Mannschaft. Danach tragen Sie bei Ihren Heimspielen Datum und Uhrzeit ein – jede Eingabe wird sofort gespeichert. Die Termine Ihrer Auswärtsspiele trägt die jeweilige Heimmannschaft ein.
+                    </p>
+                }
+                else
+                {
+                    <div class="app-termine-bar-divider"></div>
+                    <div class="app-my-stats">
+                        <span class="app-label">Ihre Heimspiele</span>
+                        <span><strong><span data-count-home-done>@Model.MyDone</span>/@Model.MyTotal</strong> mit Termin</span>
+                    </div>
+                }
+            </div>
+
+            <div class="app-termine-head-row">
+                <partial name="_PlanViewTabs" model="new PlanViewTabs(tenant.Id, PlanViewTabs.Termineingabe)" />
+            </div>
+        </div>
+
+        <div class="app-termine-body">
+            <partial name="_Flash" model="(Model.StatusMessage, Model.ErrorMessage)" />
+            <partial name="_Termineingabe" model="Model.View" />
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script src="~/js/termineingabe.js" asp-append-version="true"></script>
+}

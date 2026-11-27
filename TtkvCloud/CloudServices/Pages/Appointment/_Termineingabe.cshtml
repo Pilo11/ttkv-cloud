@@ -1,0 +1,113 @@
+@model TermineingabeView
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+@* All Begegnungen in one list; the Termin column is typed or picked and saved right away (wwwroot/js/termineingabe.js). *@
+@{
+    var token = Antiforgery.GetAndStoreTokens(ViewContext.HttpContext).RequestToken;
+    var showNumbers = Model.ShowNumbers;
+    var canEditAny = Model.Rows.Any(row => row.Editable);
+    var pickerMin = Model.RangeFrom is null ? null : Model.RangeFrom + "T00:00";
+    var pickerMax = Model.RangeTo is null ? null : Model.RangeTo + "T23:59";
+}
+@if (Model.Rows.Count == 0)
+{
+    <div class="app-empty-inline">Für diesen Spielplan sind noch keine Begegnungen hinterlegt.</div>
+}
+else
+{
+    <section class="app-eingabe" data-eingabe data-save-url="@Model.SaveUrl" data-token="@token">
+        <div class="app-eingabe-toolbar">
+            <div class="app-eingabe-help">
+                @if (canEditAny)
+                {
+                    <p class="app-hint">
+                        @if (!Model.IsAdmin)
+                        {
+                            <text>Sie tragen die Termine Ihrer <b>Heimspiele</b> ein; Auswärtsspiele trägt die Heimmannschaft ein.</text>
+                        }
+                        Termin eintippen – Ziffern genügen, Punkte und Doppelpunkt kommen von selbst: <b>140120271930</b> wird zu <b>14.01.2027 19:30</b>.
+                        Oder über <span class="app-inline-icon"><partial name="_Icon" model="@("calendar")" /></span> wählen.
+                        Jede Änderung wird sofort gespeichert und erscheint auch in der Terminplanung.
+                    </p>
+                }
+                @if (Model.RangeFrom is not null)
+                {
+                    <p class="app-hint">
+                        Erlaubt sind Tage vom <b>@TermineDates.FormatDisplay(Model.RangeFrom)</b> bis <b>@TermineDates.FormatDisplay(Model.RangeTo!)</b>@(Model.BlockedCount > 0 ? ", außer den gesperrten Tagen" : "").
+                    </p>
+                }
+            </div>
+            <div class="app-eingabe-tools">
+                @if (Model.SelectedClubId is not null)
+                {
+                    <label class="app-eingabe-filter">
+                        <input type="checkbox" data-only-mine />
+                        Nur Begegnungen von @Model.SelectedClubName
+                    </label>
+                }
+                <span class="app-save-state" data-save-state role="status" aria-live="polite"></span>
+            </div>
+        </div>
+
+        <div class="app-table-wrap">
+            <table class="app-table app-eingabe-table" data-numbers="@(showNumbers ? "true" : null)">
+                <thead>
+                    <tr>
+                        <th class="app-col-termin" scope="col">Termin</th>
+                        @if (showNumbers)
+                        {
+                            <th class="app-num" scope="col">Nr</th>
+                        }
+                        <th scope="col">Heim</th>
+                        <th scope="col">Gast</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows)
+                    {
+                        var label = row.Home + " – " + row.Guest;
+                        var msgId = "termin-msg-" + row.Match.Id;
+                        <tr data-mine="@(row.Mine ? "true" : null)" data-home="@(row.OwnHome ? "true" : null)" data-done="@(row.Slot is not null ? "true" : null)">
+                            <td class="app-col-termin" data-label="Termin">
+                                @if (row.Editable)
+                                {
+                                    <div class="app-termin" data-termin data-match="@row.Match.Id" data-stamp="@TermineingabeInput.Stamp(row.Slot)">
+                                        <span class="app-termin-wd" data-wd aria-hidden="true">@TermineingabeInput.Weekday(row.Slot)</span>
+                                        <input type="text" class="app-input app-termin-text" value="@TermineingabeInput.Display(row.Slot)"
+                                               placeholder="TT.MM.JJJJ HH:MM" autocomplete="off" spellcheck="false" enterkeyhint="done" inputmode="decimal"
+                                               aria-label="Termin @label" aria-describedby="@msgId" data-text />
+                                        <span class="app-termin-pick">
+                                            <button type="button" class="app-termin-pick-btn" title="Im Kalender wählen"
+                                                    aria-label="Termin @label im Kalender wählen" data-pick>
+                                                <partial name="_Icon" model="@("calendar")" />
+                                            </button>
+                                            <input type="datetime-local" step="300" min="@pickerMin" max="@pickerMax" tabindex="-1" aria-hidden="true"
+                                                   value="@TermineingabeInput.Stamp(row.Slot)" data-picker />
+                                        </span>
+                                    </div>
+                                    <div class="app-termin-msg" id="@msgId" data-msg></div>
+                                }
+                                else if (row.Slot is not null)
+                                {
+                                    <span class="app-termin-ro">
+                                        <span class="wd">@TermineingabeInput.Weekday(row.Slot)</span>
+                                        @TermineDates.FormatDisplay(row.Slot.Date) · @row.Slot.Time Uhr
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="app-badge">offen</span>
+                                }
+                            </td>
+                            @if (showNumbers)
+                            {
+                                <td class="app-num" data-label="Nr">@(string.IsNullOrEmpty(row.Match.Location) ? "—" : row.Match.Location)</td>
+                            }
+                            <td class="app-col-home" data-label="Heim">@row.Home</td>
+                            <td class="app-col-guest" data-label="Gast">@row.Guest</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
