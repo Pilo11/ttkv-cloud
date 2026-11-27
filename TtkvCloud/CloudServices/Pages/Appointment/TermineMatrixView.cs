@@ -25,8 +25,9 @@ public sealed class TermineMatrixRow
 }
 
 /// <summary>
-/// Date × home team matrix. Public mode acts for the selected Mannschaft;
-/// admin mode (Staffelleitung) can free or delete any Termin.
+/// Date × home team matrix; a cell holds the home team's slots of that day (several, at least
+/// 4 hours apart). Public mode acts for the selected Mannschaft; admin mode (Staffelleitung) can
+/// free or delete any Termin.
 /// </summary>
 public sealed class TermineMatrixView
 {
@@ -63,37 +64,34 @@ public sealed class TermineMatrixView
         && !Same(homeClubId, SelectedClubId)
         && TermineRules.FindUnscheduledMatch(Tenant, homeClubId, SelectedClubId) is not null;
 
-    public TermineSlot? Slot(string homeClubId, string date) => TermineRules.FindSlot(Tenant, homeClubId, date);
+    /// <summary>All slots of the cell, by time: open offers and booked matches, at least 4 hours apart.</summary>
+    public IReadOnlyList<TermineSlot> Slots(string homeClubId, string date) => TermineRules.SlotsAt(Tenant, homeClubId, date);
 
     public bool IsMine(TermineSlot slot) =>
         SelectedClubId is not null && (Same(slot.HomeClubId, SelectedClubId) || Same(slot.GuestClubId, SelectedClubId));
 
-    public bool CanBookCell(string homeClubId, string date)
+    public bool CanBookSlot(TermineSlot slot)
     {
         if (SelectedClubId is null || !CanBookAsGuest)
         {
             return false;
         }
 
-        return TermineRules.CanBook(Tenant, homeClubId, date, SelectedClubId).Ok;
+        return TermineRules.CanBook(Tenant, slot.HomeClubId, slot.Date, slot.Time, SelectedClubId).Ok;
     }
 
-    public string? BookBlockReason(string homeClubId, string date)
+    /// <summary>Why the selected Mannschaft cannot book this open slot although it has an open away match there.</summary>
+    public string? BookBlockReason(TermineSlot slot)
     {
-        if (SelectedClubId is null || !CanBookAsGuest)
+        if (SelectedClubId is null || !CanBookAsGuest
+            || string.IsNullOrWhiteSpace(slot.Time) || !string.IsNullOrEmpty(slot.GuestClubId))
         {
             return null;
         }
 
-        var slot = TermineRules.FindSlot(Tenant, homeClubId, date);
-        if (slot is null || string.IsNullOrWhiteSpace(slot.Time) || !string.IsNullOrEmpty(slot.GuestClubId))
+        if (TermineRules.FindUnscheduledMatch(Tenant, slot.HomeClubId, SelectedClubId) is not null)
         {
-            return null;
-        }
-
-        if (TermineRules.FindUnscheduledMatch(Tenant, homeClubId, SelectedClubId) is not null)
-        {
-            var result = TermineRules.CanBook(Tenant, homeClubId, date, SelectedClubId);
+            var result = TermineRules.CanBook(Tenant, slot.HomeClubId, slot.Date, slot.Time, SelectedClubId);
             return result.Ok ? null : result.Error;
         }
 

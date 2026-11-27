@@ -603,6 +603,25 @@ a:hover {
     max-width: 34rem;
 }
 
+.app-share-links {
+    display: flex;
+    flex: 1 1 24rem;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-width: 34rem;
+}
+
+.app-share-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.app-share-links .app-share-link {
+    flex: none;
+    max-width: none;
+}
+
 .app-share-link .app-input {
     flex: 1;
     color: var(--text-2);
@@ -2056,6 +2075,308 @@ a.app-plan-name:hover {
     color: #fff;
 }
 
+/* ---------- Termineingabe ---------- */
+
+.app-eingabe-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.6rem 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.app-eingabe-help {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-width: 46rem;
+}
+
+.app-inline-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    vertical-align: -0.15rem;
+}
+
+.app-eingabe-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.25rem;
+}
+
+.app-eingabe-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-2);
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.app-eingabe-filter input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--primary);
+}
+
+.app-eingabe[data-only-mine="true"] tbody tr:not([data-mine="true"]) {
+    display: none;
+}
+
+.app-save-state {
+    color: var(--text-3);
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.app-save-state[data-kind="ok"] {
+    color: var(--success);
+}
+
+.app-save-state[data-kind="error"] {
+    color: var(--danger);
+}
+
+.app-eingabe-table td {
+    vertical-align: top;
+}
+
+.app-eingabe-table td.app-col-home,
+.app-eingabe-table td.app-col-guest,
+.app-eingabe-table td.app-num {
+    padding-top: 0.95rem;
+    font-weight: 550;
+}
+
+.app-eingabe-table .app-col-termin {
+    width: 17.5rem;
+}
+
+.app-termin {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.app-termin-wd {
+    flex: none;
+    width: 1.5rem;
+    color: var(--text-3);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.app-input.app-termin-text {
+    flex: 1;
+    width: 11rem;
+    height: 2.25rem;
+    padding: 0 0.6rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.app-input.app-termin-text[aria-invalid="true"] {
+    border-color: var(--danger);
+    background: var(--danger-soft);
+}
+
+.app-input.app-termin-text[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgb(194 47 37 / 0.22);
+}
+
+/* The datetime-local lies invisibly over the button: a click or tap opens the browser's own picker. */
+.app-termin-pick {
+    position: relative;
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+}
+
+.app-termin-pick-btn {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-2);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+}
+
+.app-termin-pick-btn svg {
+    width: 1.05rem;
+    height: 1.05rem;
+}
+
+.app-termin-pick:hover .app-termin-pick-btn {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.app-termin-pick input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.app-termin-pick input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+.app-termin-msg {
+    margin: 0.3rem 0 0 1.9rem;
+    color: var(--text-3);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.app-termin-msg:empty {
+    display: none;
+}
+
+.app-termin-msg[data-kind="ok"] {
+    color: var(--success);
+}
+
+.app-termin-msg[data-kind="warn"] {
+    color: var(--warning);
+}
+
+.app-termin-msg[data-kind="error"] {
+    color: var(--danger);
+}
+
+.app-termin-ro {
+    display: inline-block;
+    padding-top: 0.4rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.app-termin-ro .wd {
+    display: inline-block;
+    width: 1.5rem;
+    color: var(--text-3);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.app-eingabe-table td > .app-badge {
+    margin-top: 0.4rem;
+}
+
+/* Narrow screens: one card per Begegnung, Termin below the teams. */
+@media (max-width: 640px) {
+    .app-eingabe-table thead {
+        display: none;
+    }
+
+    .app-eingabe-table,
+    .app-eingabe-table tbody {
+        display: block;
+    }
+
+    .app-eingabe-table tr {
+        display: grid;
+        grid-template-areas:
+            "home guest"
+            "termin termin";
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0.5rem 0.75rem;
+        padding: 0.75rem 0.85rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    /* Fixed width: the Termin cell spans all columns and would widen an auto column. */
+    .app-eingabe-table[data-numbers="true"] tr {
+        grid-template-areas:
+            "nr home guest"
+            "termin termin termin";
+        grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .app-eingabe-table tbody tr:last-child {
+        border-bottom: 0;
+    }
+
+    .app-eingabe-table tr[data-mine="true"] {
+        background: var(--primary-soft);
+        box-shadow: inset 3px 0 0 var(--primary);
+    }
+
+    .app-eingabe-table tbody tr td,
+    .app-eingabe-table tbody tr:hover td,
+    .app-eingabe-table tr[data-mine="true"] td,
+    .app-eingabe-table tr[data-mine="true"] td:first-child {
+        width: auto;
+        padding: 0;
+        border: 0;
+        background: none;
+        box-shadow: none;
+    }
+
+    .app-eingabe-table td::before {
+        content: attr(data-label);
+        display: block;
+        color: var(--text-3);
+        font-size: 0.7rem;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .app-eingabe-table td.app-col-termin {
+        grid-area: termin;
+    }
+
+    .app-eingabe-table td.app-num {
+        grid-area: nr;
+    }
+
+    .app-eingabe-table td.app-col-home {
+        grid-area: home;
+    }
+
+    .app-eingabe-table td.app-col-guest {
+        grid-area: guest;
+    }
+
+    .app-eingabe-table td.app-col-home,
+    .app-eingabe-table td.app-col-guest,
+    .app-eingabe-table td.app-num {
+        padding-top: 0;
+    }
+
+    .app-input.app-termin-text {
+        width: auto;
+        min-width: 0;
+        font-size: 16px;
+    }
+
+    .app-eingabe-toolbar {
+        align-items: flex-start;
+    }
+}
+
 /* ---------- myTT page: original styles, intentionally unchanged ---------- */
 
 .app-home {
@@ -2254,7 +2575,8 @@ a.app-plan-name:hover {
         flex: 1 1 100%;
     }
 
-    .app-share-link {
+    .app-share-link,
+    .app-share-links {
         flex-basis: 100%;
     }
 

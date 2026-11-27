@@ -7,7 +7,7 @@
 <div class="app-container app-container-narrow">
     <section class="app-hero">
         <h1>TTKV Cloud</h1>
-        <p>Werkzeuge für den Spielbetrieb: Termine der Staffel abstimmen.</p>
+        <p>Werkzeuge für den Spielbetrieb: Termine der Staffel abstimmen oder direkt eintragen.</p>
     </section>
 
     <div class="app-tiles">
@@ -16,6 +16,12 @@
             <h2>Terminplanung</h2>
             <p>Für Mannschaftsführer: Heimtermine anbieten und freie Terminvorschläge anderer Mannschaften als Gast buchen.</p>
             <span class="app-tile-link">Zur Terminplanung →</span>
+        </a>
+        <a class="app-tile" href="@Url.Page("/Appointment/Termineingabe")">
+            <span class="app-tile-icon"><partial name="_Icon" model="@("list-edit")" /></span>
+            <h2>Termineingabe</h2>
+            <p>Für Mannschaftsführer: alle Begegnungen in einer Liste – Datum und Uhrzeit der eigenen Spiele direkt eintragen. Dieselben Termine wie in der Terminplanung.</p>
+            <span class="app-tile-link">Zur Termineingabe →</span>
         </a>
     </div>
 </div>

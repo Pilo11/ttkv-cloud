@@ -5,8 +5,9 @@ ASP.NET Core Razor Pages app for TTKV. No authentication yet.
 ## Pages
 
 - **Startseite** (`/`): short German overview of the public menu buttons.
-- **Terminplanung** (`/termine`, public): appointment matrix per Spielplan (date × home team). A Mannschaftsführer picks their team, offers home Termine on any non-blocked day and books free Termine of other teams as guest. Bookings are final for them; one booked match per team per day.
-- **Staffelleitung** (`/staffelleitung/{key}`, secret): create and edit Spielpläne (name, fixed date range of the Halbserie, gesperrte Tage, Begegnungen CSV with columns `Heim`, `Gast`, optional `Nr`), free or delete booked Termine, and export booked Termine as CSV for the myTT import (`Datum;Uhrzeit;Nr;Heim;Gast`).
+- **Terminplanung** (`/termine`, public): appointment matrix per Spielplan (date × home team). A Mannschaftsführer picks their team, offers home Termine on any non-blocked day (several per day possible) and books free Termine of other teams as guest. Bookings are final for them. All Termine of a team on one day (offered home slots, booked home and away matches) must start at least 4 hours apart.
+- **Termineingabe** (`/termineingabe`, public): the same Spielpläne and Termine as a plain list of all Begegnungen (Termin, Nr, Heim, Gast). After picking their team (the same selection as in the Terminplanung), anyone can set, change or clear the Termin of every home match of that team (away matches are entered by the home team): typed (`14.01.2027 19:30`, `Do 14.1.27 19.30 Uhr`, …) or via the browser's date/time picker, saved on every change (no save button). The only rules: the day lies in the Spielplan's date range and is not gesperrt, and two matches of a team on the same day start at least 4 hours apart. A Termin is stored as the Begegnung's booked slot, so the Terminplanung shows it as gebucht (an open Terminvorschlag of the home team less than 4 hours from it becomes it). A Termin changed by someone else since the page loaded is not overwritten. Both views link to each other per Spielplan.
+- **Staffelleitung** (`/staffelleitung/{key}`, secret): create and edit Spielpläne (name, fixed date range of the Halbserie, gesperrte Tage, Begegnungen CSV with columns `Heim`, `Gast`, optional `Nr`), free or delete booked Termine, edit every Termin in the Termineingabe tab (`/staffelleitung/{key}/{id}/eingabe`), and export booked Termine as CSV for the myTT import (`Datum;Uhrzeit;Nr;Heim;Gast`).
 - **myTT-Verwaltung** (`/staffelleitung/{key}/mytt`, secret): click-TT admin in an iframe (`http://ttvn.click-tt.de/admin`) through a same-origin reverse proxy at `/click-tt/...`, plus CSV Begegnungen import. `/mytt` no longer exists.
 
 ### Staffelleitung URL
@@ -48,7 +49,7 @@ one pull request with every dependency update. Setup and day-to-day: [deploy/REA
 
 ## Security notes
 
-- There is no login. Anyone with the public link can act for any Mannschaft; only the secret key protects the Staffelleitung.
+- There is no login. Anyone with the public link can act for any Mannschaft (in the Termineingabe also change its Termine); only the secret key protects the Staffelleitung.
 - The repository is public: the key lives in the GitHub environment `production` (or the data volume locally), never in the repo.
 - click-TT credentials typed into the myTT iframe pass through this server (same-origin proxy).
 - The proxy itself (`/click-tt/...`, `/liga-id/...`) is not behind the key: anyone can reach the click-TT login through it, and click-TT's own login still protects the data. It drops the path of this app's own pages from the `Referer` it sends upstream, and the myTT page sends no Referer, so the key never reaches click-TT that way. click-TT's scripts do run on this origin inside the iframe.

@@ -10,4 +10,9 @@
         <partial name="_Icon" model="@("grid")" />
         Termine
     </a>
+    <a class="app-tab" href="@Url.Page("/Appointment/TermineingabeAdmin", new { key = Model.Key, id = Model.Id })"
+       aria-current="@(Model.Active == StaffelTabs.Eingabe ? "page" : null)">
+        <partial name="_Icon" model="@("list-edit")" />
+        Termineingabe
+    </a>
 </nav>

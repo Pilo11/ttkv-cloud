@@ -1,0 +1,37 @@
+@model PlanList
+@if (Model.Plans.Count == 0)
+{
+    <div class="app-empty">
+        <span class="app-empty-icon"><partial name="_TermineNavIcon" /></span>
+        <h2>Noch keine Spielpläne</h2>
+        <p>Sobald die Staffelleitung einen Spielplan veröffentlicht, erscheint er hier.</p>
+    </div>
+}
+else
+{
+    <ul class="app-plan-list">
+        @foreach (var plan in Model.Plans)
+        {
+            var href = Url.Page(Model.TargetPage, new { id = plan.Id });
+            <li class="app-plan">
+                <div class="app-plan-main">
+                    <a class="app-plan-name" href="@href">@plan.Name</a>
+                    <div class="app-stats">
+                        @if (plan.FirstDate is not null)
+                        {
+                            <span>@TermineDates.FormatDisplay(plan.FirstDate) – @TermineDates.FormatDisplay(plan.LastDate!)</span>
+                        }
+                        <span><strong>@plan.ClubCount</strong> Mannschaften</span>
+                    </div>
+                </div>
+                <div class="app-plan-progress">
+                    <span><strong>@plan.ScheduledCount</strong> von @plan.MatchCount Begegnungen terminiert</span>
+                    <div class="app-progress" role="presentation"><span style="width: @(plan.ScheduledPercent)%"></span></div>
+                </div>
+                <div class="app-plan-actions">
+                    <a class="app-btn app-btn-primary" href="@href">Öffnen</a>
+                </div>
+            </li>
+        }
+    </ul>
+}

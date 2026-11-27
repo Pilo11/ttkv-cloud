@@ -1,0 +1,13 @@
+@model PlanViewTabs
+<nav class="app-tabs" aria-label="Ansicht">
+    <a class="app-tab" href="@Url.Page("/Appointment/Termine", new { id = Model.Id })"
+       aria-current="@(Model.Active == PlanViewTabs.Terminplanung ? "page" : null)">
+        <partial name="_Icon" model="@("grid")" />
+        Terminplanung
+    </a>
+    <a class="app-tab" href="@Url.Page("/Appointment/Termineingabe", new { id = Model.Id })"
+       aria-current="@(Model.Active == PlanViewTabs.Termineingabe ? "page" : null)">
+        <partial name="_Icon" model="@("list-edit")" />
+        Termineingabe
+    </a>
+</nav>

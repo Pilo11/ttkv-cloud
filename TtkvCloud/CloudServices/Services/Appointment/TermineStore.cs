@@ -220,8 +220,9 @@ public sealed class TermineStore
                     continue;
                 }
 
-                var slot = TermineRules.FindSlot(tenant, homeClubId, date);
-                if (slot is null)
+                // Another slot that day (at least 4 hours from the others, CanOffer); the same open
+                // slot again changes nothing.
+                if (TermineRules.FindSlot(tenant, homeClubId, date, normalizedTime) is null)
                 {
                     tenant.Slots.Add(new TermineSlot
                     {
@@ -229,10 +230,6 @@ public sealed class TermineStore
                         Date = date,
                         Time = normalizedTime
                     });
-                }
-                else
-                {
-                    slot.Time = normalizedTime;
                 }
 
                 offered += 1;
@@ -252,10 +249,12 @@ public sealed class TermineStore
         }
     }
 
+    /// <param name="time">The offered slot; without it the first one of the day.</param>
     public async Task<TermineResult> WithdrawOfferAsync(
         string tenantId,
         string homeClubId,
         string date,
+        string? time = null,
         CancellationToken cancellationToken = default)
     {
         if (!TermineDates.TryParse(date, out var parsed))
@@ -273,15 +272,13 @@ public sealed class TermineStore
                 return TermineResult.Fail("Spielplan wurde nicht gefunden.");
             }
 
-            var check = TermineRules.CanWithdraw(tenant, homeClubId, iso);
+            var check = TermineRules.CanWithdraw(tenant, homeClubId, iso, time);
             if (!check.Ok)
             {
                 return check;
             }
 
-            tenant.Slots.RemoveAll(slot =>
-                string.Equals(slot.HomeClubId, homeClubId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(slot.Date, iso, StringComparison.OrdinalIgnoreCase));
+            tenant.Slots.Remove(TermineRules.FindSlot(tenant, homeClubId, iso, time)!);
             await SaveTenantUnlockedAsync(tenant, cancellationToken).ConfigureAwait(false);
             return TermineResult.Success();
         }
@@ -295,11 +292,13 @@ public sealed class TermineStore
     /// Staffelleitung only: frees a booked Termin (keeps the home offer) or deletes the
     /// Termin entirely. Mannschaftsführer cannot undo a booking themselves.
     /// </summary>
+    /// <param name="time">The slot; without it the first one of the day.</param>
     public async Task<TermineResult> AdminClearSlotAsync(
         string tenantId,
         string homeClubId,
         string date,
         bool deleteSlot,
+        string? time = null,
         CancellationToken cancellationToken = default)
     {
         if (!TermineDates.TryParse(date, out var parsed))
@@ -317,7 +316,7 @@ public sealed class TermineStore
                 return TermineResult.Fail("Spielplan wurde nicht gefunden.");
             }
 
-            var slot = TermineRules.FindSlot(tenant, homeClubId, iso);
+            var slot = TermineRules.FindSlot(tenant, homeClubId, iso, time);
             if (slot is null)
             {
                 return TermineResult.Fail("An diesem Tag gibt es keinen Termin.");
@@ -347,10 +346,12 @@ public sealed class TermineStore
         }
     }
 
+    /// <param name="time">The offered slot; without it the first one of the day.</param>
     public async Task<TermineResult> BookGuestAsync(
         string tenantId,
         string homeClubId,
         string date,
+        string? time,
         string guestClubId,
         CancellationToken cancellationToken = default)
     {
@@ -369,13 +370,13 @@ public sealed class TermineStore
                 return TermineResult.Fail("Spielplan wurde nicht gefunden.");
             }
 
-            var check = TermineRules.CanBook(tenant, homeClubId, iso, guestClubId);
+            var check = TermineRules.CanBook(tenant, homeClubId, iso, time, guestClubId);
             if (!check.Ok)
             {
                 return check;
             }
 
-            var slot = TermineRules.FindSlot(tenant, homeClubId, iso);
+            var slot = TermineRules.FindSlot(tenant, homeClubId, iso, time);
             if (slot is null)
             {
                 return TermineResult.Fail("Die Heimmannschaft hat an diesem Tag keinen Termin angeboten.");
@@ -391,6 +392,148 @@ public sealed class TermineStore
             slot.MatchId = match.Id;
             await SaveTenantUnlockedAsync(tenant, cancellationToken).ConfigureAwait(false);
             return TermineResult.Success();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Termineingabe: sets, moves or clears the Termin of one Begegnung directly. Rules: the day is
+    /// a Spieltag of the Spielplan (inside the Zeitraum and not gesperrt), and two matches of a
+    /// Mannschaft on the same day start at least <see cref="TermineRules.MinHoursBetweenMatches"/>
+    /// hours apart; offers, bookings and "one match per day" of the Terminplanung do not apply. The
+    /// Termin is stored as the Begegnung's booked slot, so the Terminplanung shows it as gebucht and
+    /// the myTT export contains it.
+    /// </summary>
+    /// <param name="actingClubId">The selected Mannschaft, which may only change its home matches; null for the Staffelleitung.</param>
+    /// <param name="expectedStamp">The Termin the page showed (yyyy-MM-ddTHH:mm or empty); a different stored Termin is a conflict.</param>
+    public async Task<TermineingabeSaveResult> SetMatchTerminAsync(
+        string tenantId,
+        string matchId,
+        string? actingClubId,
+        string? text,
+        string? expectedStamp,
+        CancellationToken cancellationToken = default)
+    {
+        string? iso = null;
+        string? time = null;
+        if (!TermineingabeInput.IsEmpty(text))
+        {
+            if (!TermineingabeInput.TryParse(text, out var parsedDate, out var parsedTime, out var error))
+            {
+                return TermineingabeSaveResult.Fail(error);
+            }
+
+            iso = TermineDates.ToIso(parsedDate);
+            time = parsedTime.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var tenant = await LoadTenantUnlockedAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            if (tenant is null)
+            {
+                return TermineingabeSaveResult.Fail("Spielplan wurde nicht gefunden.");
+            }
+
+            var match = TermineRules.FindMatch(tenant, matchId);
+            if (match is null)
+            {
+                return TermineingabeSaveResult.Fail("Diese Begegnung gibt es nicht mehr. Bitte die Seite neu laden.");
+            }
+
+            // A Mannschaft enters the Termine of its home matches; the away team's are the other home team's.
+            if (actingClubId is not null
+                && !string.Equals(match.HomeClubId, actingClubId, StringComparison.OrdinalIgnoreCase))
+            {
+                return TermineingabeSaveResult.Fail("Sie können nur die Termine der Heimspiele Ihrer Mannschaft eintragen.");
+            }
+
+            var current = TermineRules.FindSlotForMatch(tenant, match.Id);
+            var currentStamp = TermineingabeInput.Stamp(current);
+            var newStamp = iso is null ? "" : iso + "T" + time;
+            if (string.Equals(currentStamp, newStamp, StringComparison.Ordinal))
+            {
+                return TermineingabeSaveResult.Current(current);
+            }
+
+            if (expectedStamp is not null && !string.Equals(currentStamp, expectedStamp.Trim(), StringComparison.Ordinal))
+            {
+                return TermineingabeSaveResult.Current(
+                    current,
+                    ok: false,
+                    conflict: true,
+                    error: current is null
+                        ? "Der Termin wurde inzwischen entfernt. Ihre Eingabe wurde nicht gespeichert – bitte erneut eintragen."
+                        : "Der Termin wurde inzwischen auf " + TermineDates.FormatWithWeekday(current.Date) + ", " + current.Time
+                            + " Uhr geändert. Ihre Eingabe wurde nicht gespeichert.");
+            }
+
+            if (iso is null)
+            {
+                tenant.Slots.Remove(current!);
+            }
+            else
+            {
+                if (!tenant.Dates.Contains(iso, StringComparer.OrdinalIgnoreCase))
+                {
+                    var outside = TermineDates.TryGetRange(tenant, out var from, out var to)
+                        && (string.CompareOrdinal(iso, TermineDates.ToIso(from)) < 0 || string.CompareOrdinal(iso, TermineDates.ToIso(to)) > 0);
+                    return TermineingabeSaveResult.Fail(outside
+                        ? "Der Termin muss zwischen " + TermineDates.FormatDisplay(TermineDates.ToIso(from)) + " und "
+                            + TermineDates.FormatDisplay(TermineDates.ToIso(to)) + " liegen."
+                        : "Am " + TermineDates.FormatWithWeekday(iso) + " darf nicht gespielt werden (gesperrter Tag).");
+                }
+
+                var tooClose = TermineRules.FindTooCloseMatch(tenant, match, iso, time!);
+                if (tooClose is not null)
+                {
+                    var shared = TermineRules.Involves(tooClose, match.HomeClubId) ? match.HomeClubId : match.GuestClubId;
+                    return TermineingabeSaveResult.Fail(TermineRules.GapMessage(
+                        TermineRules.ClubName(tenant, shared) + " spielt", iso, tooClose.Time)
+                        .Replace(" Uhr. ", " Uhr (" + TermineRules.ClubName(tenant, tooClose.HomeClubId) + " – "
+                            + TermineRules.ClubName(tenant, tooClose.GuestClubId) + "). "));
+                }
+
+                // An open Terminvorschlag of the home team less than 4 hours from the new time
+                // becomes this Termin; offers further away stay open.
+                var offer = TermineRules.FindTooClose(
+                    TermineRules.SlotsAt(tenant, match.HomeClubId, iso).Where(slot => string.IsNullOrEmpty(slot.GuestClubId)),
+                    time!);
+                if (offer is not null)
+                {
+                    if (current is not null)
+                    {
+                        tenant.Slots.Remove(current);
+                    }
+
+                    offer.Time = time!;
+                    offer.GuestClubId = match.GuestClubId;
+                    offer.MatchId = match.Id;
+                }
+                else if (current is not null)
+                {
+                    current.Date = iso;
+                    current.Time = time!;
+                }
+                else
+                {
+                    tenant.Slots.Add(new TermineSlot
+                    {
+                        HomeClubId = match.HomeClubId,
+                        Date = iso,
+                        Time = time!,
+                        GuestClubId = match.GuestClubId,
+                        MatchId = match.Id
+                    });
+                }
+            }
+
+            await SaveTenantUnlockedAsync(tenant, cancellationToken).ConfigureAwait(false);
+            return TermineingabeSaveResult.Current(TermineRules.FindSlotForMatch(tenant, match.Id));
         }
         finally
         {
@@ -624,8 +767,11 @@ public sealed class TermineStore
                 slot.MatchId = null;
             }
 
-            var key = slot.HomeClubId + "|" + slot.Date;
-            if (!seen.Add(key))
+            // A home team can have several slots a day (at least 4 hours apart): one per time; and
+            // each Begegnung is booked at most once.
+            var key = slot.HomeClubId + "|" + slot.Date + "|" + slot.Time;
+            if (!seen.Add(key)
+                || (!string.IsNullOrEmpty(slot.GuestClubId) && !string.IsNullOrEmpty(slot.MatchId) && !seen.Add("match|" + slot.MatchId)))
             {
                 continue;
             }

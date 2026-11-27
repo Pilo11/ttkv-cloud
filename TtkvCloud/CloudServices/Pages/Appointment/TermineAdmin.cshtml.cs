@@ -109,14 +109,16 @@ public class TermineAdminModel : PageModel
 
     private async Task<IActionResult> ClearAsync(bool deleteSlot, CancellationToken cancellationToken)
     {
-        var parts = (SlotKey ?? "").Split('|', 2);
-        if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
+        // "home|date|time" (a home team can have several slots per day); the time is optional.
+        var parts = (SlotKey ?? "").Split('|', 3);
+        if (parts.Length < 2 || parts[0].Length == 0 || parts[1].Length == 0)
         {
             TempData[TerminGeneratorModel.ErrorKey] = "Ungültiger Termin.";
             return RedirectToSelf();
         }
 
-        var result = await _store.AdminClearSlotAsync(Id, parts[0], parts[1], deleteSlot, cancellationToken).ConfigureAwait(false);
+        var time = parts.Length == 3 && parts[2].Length > 0 ? parts[2] : null;
+        var result = await _store.AdminClearSlotAsync(Id, parts[0], parts[1], deleteSlot, time, cancellationToken).ConfigureAwait(false);
         if (result.Ok)
         {
             TempData[TerminGeneratorModel.StatusKey] = deleteSlot
